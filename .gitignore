@@ -1,0 +1,15 @@
+target/
+*.exe
+*.pdb
+*.dll
+*.lib
+*.obj
+*.ilk
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+*.swp
+*.swo

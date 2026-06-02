@@ -1,0 +1,14 @@
+﻿[package]
+name = "rsenvforge"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust CLI for installing agent skills and Rust tools from configurable install forms."
+license = "MIT"
+
+[lib]
+name = "rsenvforge"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rsenvforge"
+path = "src/main.rs"

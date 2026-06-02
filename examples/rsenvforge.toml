@@ -1,0 +1,87 @@
+# rsenvforge 安装表单示例
+
+[profiles.light]
+tools = ["rust"]
+skills = []
+items = []
+
+[profiles.standard]
+tools = [
+  "rust",
+  "cargo-llvm-cov",
+  "python",
+  "bindgen-cli",
+  "cargo-audit",
+  "cargo-deny",
+  "cargo-geiger",
+  "cargo-udeps",
+  "cargo-bloat",
+  "flamegraph-rs",
+  "perf",
+  "cargo-msrv",
+  "cargo-semver-checks",
+  "cpp2rust-demo",
+  "c2rust-demo",
+  "rust-checker",
+  "gitnexus",
+]
+skills = ["openspec", "oh-my-opencode", "superpowers"]
+items = []
+
+[profiles.full]
+tools = [
+  "rust",
+  "cargo-llvm-cov",
+  "python",
+  "bindgen-cli",
+  "cargo-audit",
+  "cargo-deny",
+  "cargo-geiger",
+  "cargo-udeps",
+  "cargo-bloat",
+  "flamegraph-rs",
+  "perf",
+  "cargo-msrv",
+  "cargo-semver-checks",
+  "cpp2rust-demo",
+  "c2rust-demo",
+  "rust-checker",
+  "gitnexus",
+  "valgrind",
+  "asan",
+  "CMake",
+  "Ninja",
+  "Clang/libclang",
+  "llvm-tools-preview",
+  "clang++/g++",
+]
+skills = ["openspec", "oh-my-opencode", "superpowers"]
+items = []
+
+# 无法确定 cargo install 方案的系统工具放在 [[tools]]。
+# 如果你确认了官方安装方式，可以填入 install_windows/install_linux。
+[[tools]]
+name = "python"
+check = "python --version"
+# install_windows = "winget install Python.Python.3.12"
+# install_linux = "sudo apt-get update && sudo apt-get install -y python3 python3-pip"
+
+[[tools]]
+name = "gitnexus"
+check = "gitnexus --version"
+# install = "请在确认官方安装源后填写"
+
+[[skills]]
+name = "openspec"
+source = "D:/your/local/skills/openspec"
+agents = ["claude", "opencode"]
+
+[[skills]]
+name = "oh-my-opencode"
+source = "D:/your/local/skills/oh-my-opencode"
+agents = ["opencode"]
+
+[[skills]]
+name = "superpowers"
+source = "D:/your/local/skills/superpowers"
+agents = ["claude", "opencode"]
