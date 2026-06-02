@@ -1,0 +1,555 @@
+use std::collections::BTreeMap;
+use std::env;
+use std::path::{Path, PathBuf};
+
+use super::constants::{BUILTIN_CONFIG, CONFIG_FILE};
+use super::error::ForgeError;
+use super::fsutil::read_to_string;
+use super::models::{
+    Agent, InstallConfig, InstallItem, InstallKind, LoadedConfig, Profile, ProfileDef, SkillDef,
+    ToolDef,
+};
+use super::paths::{config_dir, manifest_config_path};
+use super::util::resolve_source;
+
+pub fn load_config(explicit_path: Option<&Path>) -> Result<LoadedConfig, ForgeError> {
+    if let Some(path) = explicit_path {
+        return Ok(LoadedConfig {
+            config: merge_with_builtin(parse_config(&read_to_string(path)?)?),
+            path: Some(path.to_path_buf()),
+            builtin: false,
+        });
+    }
+
+    let local = env::current_dir()
+        .map_err(|source| ForgeError::Io {
+            path: PathBuf::from("."),
+            source,
+        })?
+        .join(CONFIG_FILE);
+    if local.is_file() {
+        return Ok(LoadedConfig {
+            config: merge_with_builtin(parse_config(&read_to_string(&local)?)?),
+            path: Some(local),
+            builtin: false,
+        });
+    }
+
+    let manifest = manifest_config_path();
+    if manifest.is_file() {
+        return Ok(LoadedConfig {
+            config: merge_with_builtin(parse_config(&read_to_string(&manifest)?)?),
+            path: Some(manifest),
+            builtin: false,
+        });
+    }
+
+    let user = config_dir().join(CONFIG_FILE);
+    if user.is_file() {
+        return Ok(LoadedConfig {
+            config: merge_with_builtin(parse_config(&read_to_string(&user)?)?),
+            path: Some(user),
+            builtin: false,
+        });
+    }
+
+    Ok(LoadedConfig {
+        config: parse_config(BUILTIN_CONFIG)?,
+        path: None,
+        builtin: true,
+    })
+}
+
+pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
+    let mut profiles: BTreeMap<String, ProfileDef> = BTreeMap::new();
+    let mut items = Vec::new();
+    let mut tools = Vec::new();
+    let mut skills = Vec::new();
+    let mut section = Section::None;
+    let mut current_item: Option<RawItem> = None;
+    let mut current_tool: Option<RawTool> = None;
+    let mut current_skill: Option<RawSkill> = None;
+
+    let normalized = normalize_multiline_arrays(input)?;
+    for (line_number, raw_line) in normalized.lines().enumerate() {
+        let line = strip_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line == "[[items]]" || line == "[[tools]]" || line == "[[skills]]" {
+            flush_raw(
+                &mut current_item,
+                &mut current_tool,
+                &mut current_skill,
+                &mut items,
+                &mut tools,
+                &mut skills,
+            )?;
+            section = match line {
+                "[[items]]" => {
+                    current_item = Some(RawItem::default());
+                    Section::Item
+                }
+                "[[tools]]" => {
+                    current_tool = Some(RawTool::default());
+                    Section::Tool
+                }
+                _ => {
+                    current_skill = Some(RawSkill::default());
+                    Section::Skill
+                }
+            };
+            continue;
+        }
+
+        if line.starts_with("[profiles.") && line.ends_with(']') {
+            flush_raw(
+                &mut current_item,
+                &mut current_tool,
+                &mut current_skill,
+                &mut items,
+                &mut tools,
+                &mut skills,
+            )?;
+            let profile = line
+                .trim_start_matches("[profiles.")
+                .trim_end_matches(']')
+                .trim()
+                .to_string();
+            if Profile::parse(&profile).is_none() {
+                return Err(ForgeError::Parse(format!(
+                    "第 {} 行：未知 profile：{profile}",
+                    line_number + 1
+                )));
+            }
+            profiles.entry(profile.clone()).or_default();
+            section = Section::Profile(profile);
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(ForgeError::Parse(format!(
+                "第 {} 行：需要 key = value",
+                line_number + 1
+            )));
+        };
+        let key = key.trim();
+        let value = value.trim();
+
+        match &mut section {
+            Section::Profile(profile) => {
+                let profile = profiles.entry(profile.clone()).or_default();
+                match key {
+                    "tools" => profile.tools = parse_string_array(value)?,
+                    "skills" => profile.skills = parse_string_array(value)?,
+                    "items" => profile.items = parse_string_array(value)?,
+                    _ => {
+                        return Err(ForgeError::Parse(format!(
+                            "第 {} 行：profiles 只支持 tools/skills/items",
+                            line_number + 1
+                        )))
+                    }
+                }
+            }
+            Section::Item => {
+                let Some(item) = current_item.as_mut() else {
+                    return Err(ForgeError::Parse("item 字段不在 [[items]] 中".to_string()));
+                };
+                match key {
+                    "name" => item.name = Some(parse_string(value)?),
+                    "kind" => item.kind = Some(parse_string(value)?),
+                    "source" => item.source = Some(parse_string(value)?),
+                    "agents" => item.agents = parse_string_array(value)?,
+                    "bins" => item.bins = parse_string_array(value)?,
+                    _ => return Err(ForgeError::Parse(format!("未知 item 字段：{key}"))),
+                }
+            }
+            Section::Tool => {
+                let Some(tool) = current_tool.as_mut() else {
+                    return Err(ForgeError::Parse("tool 字段不在 [[tools]] 中".to_string()));
+                };
+                match key {
+                    "name" => tool.name = Some(parse_string(value)?),
+                    "check" => tool.check = Some(parse_string(value)?),
+                    "check_windows" => tool.check_windows = Some(parse_string(value)?),
+                    "check_linux" => tool.check_linux = Some(parse_string(value)?),
+                    "install" => tool.install = Some(parse_string(value)?),
+                    "install_windows" => tool.install_windows = Some(parse_string(value)?),
+                    "install_linux" => tool.install_linux = Some(parse_string(value)?),
+                    _ => return Err(ForgeError::Parse(format!("未知 tool 字段：{key}"))),
+                }
+            }
+            Section::Skill => {
+                let Some(skill) = current_skill.as_mut() else {
+                    return Err(ForgeError::Parse(
+                        "skill 字段不在 [[skills]] 中".to_string(),
+                    ));
+                };
+                match key {
+                    "name" => skill.name = Some(parse_string(value)?),
+                    "source" => skill.source = Some(parse_string(value)?),
+                    "agents" => skill.agents = parse_string_array(value)?,
+                    _ => return Err(ForgeError::Parse(format!("未知 skill 字段：{key}"))),
+                }
+            }
+            Section::None => {
+                return Err(ForgeError::Parse(format!(
+                    "第 {} 行：字段不在任何 section 中",
+                    line_number + 1
+                )));
+            }
+        }
+    }
+
+    flush_raw(
+        &mut current_item,
+        &mut current_tool,
+        &mut current_skill,
+        &mut items,
+        &mut tools,
+        &mut skills,
+    )?;
+
+    for profile in ["light", "standard", "full"] {
+        profiles.entry(profile.to_string()).or_default();
+    }
+
+    Ok(InstallConfig {
+        profiles,
+        items,
+        tools,
+        skills,
+    })
+}
+
+fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
+    let mut builtin = parse_config(BUILTIN_CONFIG).expect("内置配置必须可解析");
+    for (profile, def) in config.profiles {
+        builtin.profiles.insert(profile, def);
+    }
+    extend_or_replace_tools(&mut builtin.tools, config.tools);
+    extend_or_replace_skills(&mut builtin.skills, config.skills);
+    builtin.items = config.items;
+    builtin
+}
+
+fn extend_or_replace_tools(base: &mut Vec<ToolDef>, incoming: Vec<ToolDef>) {
+    for tool in incoming {
+        if let Some(existing) = base.iter_mut().find(|existing| existing.name == tool.name) {
+            *existing = tool;
+        } else {
+            base.push(tool);
+        }
+    }
+}
+
+fn extend_or_replace_skills(base: &mut Vec<SkillDef>, incoming: Vec<SkillDef>) {
+    for skill in incoming {
+        if let Some(existing) = base.iter_mut().find(|existing| existing.name == skill.name) {
+            *existing = skill;
+        } else {
+            base.push(skill);
+        }
+    }
+}
+
+pub(crate) fn resolve_config_sources(
+    mut config: InstallConfig,
+    config_path: Option<&Path>,
+) -> InstallConfig {
+    if let Some(base_dir) = config_path.and_then(Path::parent) {
+        for item in &mut config.items {
+            item.source = resolve_source(&item.source, base_dir);
+        }
+        for skill in &mut config.skills {
+            skill.source = resolve_source(&skill.source, base_dir);
+        }
+    }
+    config
+}
+
+pub(crate) fn tools_for_names(
+    config: &InstallConfig,
+    names: &[String],
+) -> Result<Vec<ToolDef>, ForgeError> {
+    let mut tools = Vec::new();
+    for name in names {
+        if let Some(tool) = builtin_cargo_tool(name)
+            .or_else(|| config.tools.iter().find(|tool| &tool.name == name).cloned())
+        {
+            tools.push(tool);
+        } else {
+            tools.push(ToolDef {
+                name: name.clone(),
+                check: Some(format!("{name} --version")),
+                check_windows: None,
+                check_linux: None,
+                install: None,
+                install_windows: None,
+                install_linux: None,
+            });
+        }
+    }
+    Ok(tools)
+}
+
+pub(crate) fn skills_for_names(
+    config: &InstallConfig,
+    names: &[String],
+) -> Result<Vec<SkillDef>, ForgeError> {
+    let mut skills = Vec::new();
+    for name in names {
+        let skill = config
+            .skills
+            .iter()
+            .find(|skill| &skill.name == name)
+            .cloned()
+            .unwrap_or_else(|| SkillDef {
+                name: name.clone(),
+                source: String::new(),
+                agents: vec![Agent::Claude, Agent::OpenCode],
+            });
+        skills.push(skill);
+    }
+    Ok(skills)
+}
+
+pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
+    let (check, install) = match name {
+        "cargo-llvm-cov" => ("cargo llvm-cov --version", "cargo install cargo-llvm-cov"),
+        "bindgen-cli" => ("bindgen --version", "cargo install bindgen-cli"),
+        "cargo-audit" => ("cargo audit --version", "cargo install cargo-audit"),
+        "cargo-deny" => ("cargo deny --version", "cargo install cargo-deny"),
+        "cargo-geiger" => ("cargo geiger --version", "cargo install cargo-geiger"),
+        "cargo-udeps" => ("cargo udeps --version", "cargo install cargo-udeps"),
+        "cargo-bloat" => ("cargo bloat --version", "cargo install cargo-bloat"),
+        "flamegraph-rs" => ("flamegraph --version", "cargo install flamegraph"),
+        "cargo-msrv" => ("cargo msrv --version", "cargo install cargo-msrv"),
+        "cargo-semver-checks" => (
+            "cargo semver-checks --version",
+            "cargo install cargo-semver-checks",
+        ),
+        "cpp2rust-demo" => (
+            "cpp2rust-demo --version",
+            "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo",
+        ),
+        "c2rust-demo" => (
+            "c2rust-demo --version",
+            "cargo install --git https://github.com/LuuuXXX/c2rust-demo",
+        ),
+        "rust-checker" => (
+            "rust-checker --version",
+            "cargo install --git https://github.com/LuuuXXX/rust-checker",
+        ),
+        "llvm-tools-preview" => (
+            "rustup component list --installed",
+            "rustup component add llvm-tools-preview",
+        ),
+        "rust" => (
+            "rustup --version",
+            "rustup toolchain install stable && rustup component add rustfmt clippy",
+        ),
+        _ => return None,
+    };
+
+    Some(ToolDef {
+        name: name.to_string(),
+        check: Some(check.to_string()),
+        check_windows: None,
+        check_linux: None,
+        install: Some(install.to_string()),
+        install_windows: None,
+        install_linux: None,
+    })
+}
+
+fn strip_comment(line: &str) -> &str {
+    let mut in_quote = false;
+    for (index, ch) in line.char_indices() {
+        match ch {
+            '"' => in_quote = !in_quote,
+            '#' if !in_quote => return &line[..index],
+            _ => {}
+        }
+    }
+    line
+}
+
+fn parse_string(value: &str) -> Result<String, ForgeError> {
+    let value = value.trim();
+    if let Some(stripped) = value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+    {
+        Ok(stripped.to_string())
+    } else {
+        Err(ForgeError::Parse(format!("需要字符串，得到：{value}")))
+    }
+}
+
+fn parse_string_array(value: &str) -> Result<Vec<String>, ForgeError> {
+    let value = value.trim();
+    let Some(inner) = value
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+    else {
+        return Err(ForgeError::Parse(format!("需要数组，得到：{value}")));
+    };
+    if inner.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    inner
+        .split(',')
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| parse_string(value.trim()))
+        .collect()
+}
+
+fn normalize_multiline_arrays(input: &str) -> Result<String, ForgeError> {
+    let mut output = String::new();
+    let mut pending = String::new();
+    let mut in_array = false;
+
+    for raw_line in input.lines() {
+        let line = strip_comment(raw_line);
+        if in_array {
+            pending.push(' ');
+            pending.push_str(line.trim());
+            if line.contains(']') {
+                output.push_str(&pending);
+                output.push('\n');
+                pending.clear();
+                in_array = false;
+            }
+            continue;
+        }
+
+        if let Some((_, value)) = line.split_once('=') {
+            let value = value.trim();
+            if value.starts_with('[') && !value.contains(']') {
+                pending.push_str(line.trim());
+                in_array = true;
+                continue;
+            }
+        }
+
+        output.push_str(raw_line);
+        output.push('\n');
+    }
+
+    if in_array {
+        return Err(ForgeError::Parse("数组缺少结束 ]".to_string()));
+    }
+
+    Ok(output)
+}
+
+fn flush_raw(
+    current_item: &mut Option<RawItem>,
+    current_tool: &mut Option<RawTool>,
+    current_skill: &mut Option<RawSkill>,
+    items: &mut Vec<InstallItem>,
+    tools: &mut Vec<ToolDef>,
+    skills: &mut Vec<SkillDef>,
+) -> Result<(), ForgeError> {
+    if let Some(item) = current_item.take() {
+        items.push(item.into_item()?);
+    }
+    if let Some(tool) = current_tool.take() {
+        tools.push(tool.into_tool()?);
+    }
+    if let Some(skill) = current_skill.take() {
+        skills.push(skill.into_skill()?);
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+enum Section {
+    None,
+    Profile(String),
+    Item,
+    Tool,
+    Skill,
+}
+
+#[derive(Debug, Default)]
+struct RawItem {
+    name: Option<String>,
+    kind: Option<String>,
+    source: Option<String>,
+    agents: Vec<String>,
+    bins: Vec<String>,
+}
+
+impl RawItem {
+    fn into_item(self) -> Result<InstallItem, ForgeError> {
+        let name = required(self.name, "item.name")?;
+        let kind = InstallKind::parse(&required(self.kind, "item.kind")?)?;
+        let source = required(self.source, "item.source")?;
+        let agents = self
+            .agents
+            .iter()
+            .map(|agent| Agent::parse(agent))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(InstallItem {
+            name,
+            kind,
+            source,
+            agents,
+            bins: self.bins,
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+struct RawTool {
+    name: Option<String>,
+    check: Option<String>,
+    check_windows: Option<String>,
+    check_linux: Option<String>,
+    install: Option<String>,
+    install_windows: Option<String>,
+    install_linux: Option<String>,
+}
+
+impl RawTool {
+    fn into_tool(self) -> Result<ToolDef, ForgeError> {
+        Ok(ToolDef {
+            name: required(self.name, "tool.name")?,
+            check: self.check,
+            check_windows: self.check_windows,
+            check_linux: self.check_linux,
+            install: self.install,
+            install_windows: self.install_windows,
+            install_linux: self.install_linux,
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+struct RawSkill {
+    name: Option<String>,
+    source: Option<String>,
+    agents: Vec<String>,
+}
+
+impl RawSkill {
+    fn into_skill(self) -> Result<SkillDef, ForgeError> {
+        let agents = self
+            .agents
+            .iter()
+            .map(|agent| Agent::parse(agent))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(SkillDef {
+            name: required(self.name, "skill.name")?,
+            source: required(self.source, "skill.source")?,
+            agents,
+        })
+    }
+}
+
+fn required(value: Option<String>, field: &str) -> Result<String, ForgeError> {
+    value.ok_or_else(|| ForgeError::Config(format!("缺少必填字段 {field}")))
+}

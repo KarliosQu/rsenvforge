@@ -1,4 +1,4 @@
-# rsenvforge 安装表单示例
+# rsenvforge 默认安装表单
 
 [profiles.light]
 tools = ["rust"]
@@ -58,8 +58,9 @@ tools = [
 skills = ["openspec", "oh-my-opencode", "superpowers"]
 items = []
 
-# 无法确定 cargo install 方案的系统工具放在 [[tools]]。
+# 无法确定 cargo install 方案的系统工具放在 [[tools]] 中。
 # 如果你确认了官方安装方式，可以填入 install_windows/install_linux。
+
 [[tools]]
 name = "python"
 check = "python --version"

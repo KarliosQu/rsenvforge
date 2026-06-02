@@ -1,30 +1,99 @@
 # rsenvforge
 
-`rsenvforge` 是一个 Rust 环境安装器。它按 `rsenvforge.toml` 中定义的轻量、标准、全量三个等级，先检测工具和 agent skill，再询问用户是否安装缺失项。
+`rsenvforge` 是一个用于准备 Rust 开发环境的命令行工具。它会按照 `rsenvforge.toml` 中定义的安装表单，先检查工具和 agent skill 的安装状态，再询问是否安装缺失项。
 
-默认命令：
+默认命令是：
 
 ```powershell
 rsenvforge install
 ```
 
-无参数时使用 `standard` 等级。安装前会先检测并列出缺失项，然后提示：
+无参数时会使用 `standard` 等级。
+
+## 构建与运行
+
+在项目目录中执行：
+
+```powershell
+cargo build --release
+.\target\release\rsenvforge.exe doctor
+.\target\release\rsenvforge.exe install
+```
+
+Linux 下可使用：
+
+```bash
+cargo build --release
+./target/release/rsenvforge doctor
+./target/release/rsenvforge install
+```
+
+如果已经把二进制所在目录加入 `PATH`，可以直接使用 `rsenvforge`。
+
+## 命令
+
+```text
+rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup]
+rsenvforge install-skill <source> --agent <claude|opencode|both> [--force]
+rsenvforge install-crate <source> [--norustup] [--force] [--bin <name>]
+rsenvforge update [--force] [--norustup]
+rsenvforge list
+rsenvforge doctor
+rsenvforge help
+rsenvforge version
+```
+
+常用示例：
+
+```powershell
+rsenvforge install
+rsenvforge install light
+rsenvforge install full
+rsenvforge install --config D:\path\rsenvforge.toml
+
+rsenvforge install-skill D:\skills\openspec --agent both
+rsenvforge install-crate https://github.com/example/tool.git --bin tool-name
+
+rsenvforge update
+rsenvforge list
+rsenvforge doctor
+```
+
+## 安装流程
+
+`install` 会先检查当前等级中的工具和 skill：
+
+- 已安装的工具会显示检测到的版本信息。
+- 未安装的工具会被列为缺失项。
+- 已安装的 skill 会显示已存在。
+- 未安装的 skill 会被列为缺失项。
+- 如果 agent 的默认 skill 目录不存在，该 agent 下的 skill 安装会被跳过并给出提示。
+
+检查完成后，命令会询问：
 
 ```text
 以上为目前工具安装情况，请问是否安装缺失工具？(Y/N)
 ```
 
-输入 `Y` 或 `y` 才会继续安装；输入 `N` 或其他内容会取消安装。
+只有输入 `Y` 或 `y` 才会继续安装。输入 `N` 或其他内容会取消安装。安装过程中如果某个工具或 skill 失败，流程会立即停止，并说明失败项。
 
 ## 安装等级
 
-轻量 `light`：
+`rsenvforge` 使用三个固定等级：
 
-- `rust` stable
-- 确保 `cargo`、`rustup`、`rustfmt`、`clippy` 可用
+- `light`：轻量环境。
+- `standard`：标准环境，包含 `light` 的内容。
+- `full`：完整环境，包含 `standard` 的内容。
 
-标准 `standard` 包含轻量，并增加：
+内置等级内容如下。
 
+`light`：
+
+- `rust`
+
+`standard`：
+
+- `rust`
 - `cargo-llvm-cov`
 - `python`
 - `bindgen-cli`
@@ -41,10 +110,13 @@ rsenvforge install
 - `c2rust-demo`
 - `rust-checker`
 - `gitnexus`
-- `openspec`、`oh-my-opencode`、`superpowers` skills
+- `openspec`
+- `oh-my-opencode`
+- `superpowers`
 
-全量 `full` 包含标准，并增加：
+`full`：
 
+- `standard` 的全部内容
 - `valgrind`
 - `asan`
 - `CMake`
@@ -53,107 +125,153 @@ rsenvforge install
 - `llvm-tools-preview`
 - `clang++/g++`
 
-## 命令
-
-```powershell
-rsenvforge install
-rsenvforge install light
-rsenvforge install full
-rsenvforge install --config D:\path\rsenvforge.toml
-
-rsenvforge install-skill <git-or-local-path> --agent claude
-rsenvforge install-skill <git-or-local-path> --agent opencode
-rsenvforge install-skill <git-or-local-path> --agent both
-
-rsenvforge install-crate <git-or-local-path>
-rsenvforge install-crate <git-or-local-path> --norustup
-rsenvforge install-crate <git-or-local-path> --bin tool-name
-
-rsenvforge update
-rsenvforge list
-rsenvforge doctor
-```
-
-## 检测和确认
-
-`install` 会先输出：
-
-- 已安装工具及版本
-- 尚未安装的工具
-- 已安装 skill
-- 尚未安装 skill
-- 未找到默认 skill 文件夹而跳过的 skill
-
-如果存在缺失项，工具会等待用户输入 `Y` 或 `N`。只有用户确认后才执行安装。
-
-安装过程中任何一个工具或 skill 失败，流程会立即停止，并说明失败项。
-
 ## 配置文件
 
-配置文件名为 `rsenvforge.toml`。读取顺序：
+配置文件名为 `rsenvforge.toml`。发现顺序如下：
 
-1. `--config <path>` 指定的文件
-2. 当前目录下的 `rsenvforge.toml`
-3. 用户配置目录下的 `rsenvforge.toml`
-4. 内置默认配置
+1. `--config <path>` 指定的文件。
+2. 当前目录下的 `rsenvforge.toml`。
+3. 项目根目录下的 [rsenvforge.toml](rsenvforge.toml)。
+4. 用户配置目录下的 `rsenvforge.toml`。
+5. 内置配置。
 
-示例见 `examples/rsenvforge.toml`。
+这个仓库自带的默认安装表单位于根目录 [rsenvforge.toml](rsenvforge.toml)。直接从本项目构建出的二进制，即使在其他目录运行，也会在没有显式配置和当前目录配置时回退读取该文件。
 
-## tools 字段
+## 配置格式
 
-无法通过 `cargo install` 确定安装方式的系统工具放入 `[[tools]]`。
+配置由 `profiles`、`tools`、`skills` 和 `items` 组成：
 
 ```toml
-[profiles.standard]
-tools = ["python"]
+[profiles.light]
+tools = ["rust"]
 skills = []
+items = []
+
+[profiles.standard]
+tools = ["rust", "cargo-audit", "python"]
+skills = ["openspec"]
+items = []
+
+[profiles.full]
+tools = ["rust", "cargo-audit", "python", "CMake"]
+skills = ["openspec"]
 items = []
 
 [[tools]]
 name = "python"
 check = "python --version"
-install_windows = "winget install Python.Python.3.12"
-install_linux = "sudo apt-get update && sudo apt-get install -y python3 python3-pip"
-```
-
-如果工具缺失但没有配置安装命令，`rsenvforge` 会停止并提示你补充官方安装命令，避免在安装源不确定时擅自选择来源。
-
-## skills 字段
-
-内置 profile 会尝试安装：
-
-- `openspec`
-- `oh-my-opencode`
-- `superpowers`
-
-这些 skill 的来源不在工具内硬编码。你需要在配置文件中提供本地路径或 Git 地址：
-
-```toml
-[profiles.standard]
-tools = []
-skills = ["openspec", "superpowers"]
-items = []
+# install_windows = "winget install Python.Python.3.12"
+# install_linux = "sudo apt-get update && sudo apt-get install -y python3 python3-pip"
 
 [[skills]]
 name = "openspec"
 source = "D:/your/local/skills/openspec"
 agents = ["claude", "opencode"]
+```
 
+`profiles.<name>.tools` 引用 `[[tools]]` 或内置工具。`profiles.<name>.skills` 引用 `[[skills]]`。`profiles.<name>.items` 用于兼容旧的自定义 skill/crate 安装项。
+
+自定义配置会和内置配置合并。同名 `tool` 或 `skill` 会覆盖内置定义。
+
+## 工具安装
+
+工具会先通过 `check` 命令检测版本。内置的 Rust/Cargo 工具会使用确定的安装命令，例如：
+
+- `rust`：`rustup toolchain install stable`，并安装 `rustfmt` 和 `clippy`。
+- `cargo-audit`：`cargo install cargo-audit`。
+- `cargo-llvm-cov`：`cargo install cargo-llvm-cov`。
+- `cpp2rust-demo`：`cargo install --git https://github.com/LuuuXXX/cpp2rust-demo`。
+- `c2rust-demo`：`cargo install --git https://github.com/LuuuXXX/c2rust-demo`。
+- `rust-checker`：`cargo install --git https://github.com/LuuuXXX/rust-checker`。
+- `llvm-tools-preview`：`rustup component add llvm-tools-preview`。
+
+对安装方式没有内置确定来源的系统工具，例如 `python`、`perf`、`valgrind`、`CMake`、`Ninja`、`Clang/libclang`、`clang++/g++`、`asan` 和 `gitnexus`，需要在 `[[tools]]` 中提供官方安装命令。缺失这些工具且没有安装命令时，`rsenvforge` 会停止并提示补充配置。
+
+`[[tools]]` 支持的常用字段：
+
+```toml
+[[tools]]
+name = "CMake"
+check = "cmake --version"
+check_windows = "cmake --version"
+check_linux = "cmake --version"
+install = "..."
+install_windows = "..."
+install_linux = "..."
+```
+
+平台专用字段优先级高于通用字段。
+
+## Skill 安装
+
+`rsenvforge` 支持安装到 Claude Code 和 OpenCode 的默认 skill 目录：
+
+- Claude：`~/.claude/skills`
+- OpenCode：Windows 为 `%APPDATA%\opencode\skills`，Linux 为 `~/.config/opencode/skills`
+
+如果默认目录不存在，工具会提示并跳过该 agent 的 skill 安装，不会自动创建目录。
+
+`[[skills]]` 示例：
+
+```toml
 [[skills]]
 name = "superpowers"
-source = "https://github.com/you/superpowers-skill.git"
+source = "https://github.com/example/superpowers.git"
 agents = ["claude", "opencode"]
 ```
 
-如果默认 skill 文件夹不存在，`rsenvforge` 会提示并跳过安装，不会自动创建该目录。
+`source` 可以是 Git 地址或本地路径。扫描 skill 时会查找：
 
-## --norustup
+- 根目录 `SKILL.md`
+- `skills/*/SKILL.md`
+- `.claude/skills/*/SKILL.md`
 
-当用户无法使用 `rustup` 时，可以使用：
+## Crate 安装
+
+`install-crate` 可从 Git 地址或本地路径安装 Rust binary：
 
 ```powershell
-rsenvforge install-crate <source> --norustup
-rsenvforge install --norustup
+rsenvforge install-crate D:\source\my-tool
+rsenvforge install-crate https://github.com/example/my-tool.git --bin my-tool
+rsenvforge install-crate https://github.com/example/my-tool.git --norustup
 ```
 
-`--norustup` 会跳过 rustup 检查，优先寻找仓库中的预编译二进制；如果没有预编译二进制但本机存在 `cargo`，则会尝试 `cargo build --release` 后复制产物。
+扫描 crate 时会查找：
+
+- 根目录 `Cargo.toml`
+- `crates/*/Cargo.toml`
+
+如果仓库中存在预编译二进制，会优先复制；否则在本机有 `cargo` 时执行 `cargo build --release`。生成的可执行文件会复制到 `rsenvforge` 管理的 bin 目录中。可以通过 `doctor` 查看该目录。
+
+`--norustup` 会跳过 rustup 检查，适合无法使用 rustup 的环境。
+
+## 更新与清单
+
+`rsenvforge` 会记录自己安装过的项目。记录内容包括名称、类型、来源、等级、目标路径、安装时间以及 Git commit 或本地路径。
+
+```powershell
+rsenvforge list
+rsenvforge update
+```
+
+`update` 只更新 registry 中已有的安装项，不会扫描和安装配置文件里的新项目。
+
+## 环境变量
+
+可以通过环境变量覆盖默认路径：
+
+- `RSENVFORGE_HOME`：工具数据目录。
+- `RSENVFORGE_CONFIG_DIR`：用户配置目录。
+- `RSENVFORGE_BIN_DIR`：工具管理的 bin 目录。
+- `RSENVFORGE_CLAUDE_DIR`：Claude skill 目录。
+- `RSENVFORGE_OPENCODE_DIR`：OpenCode skill 目录。
+
+## 诊断
+
+执行：
+
+```powershell
+rsenvforge doctor
+```
+
+该命令会显示数据目录、bin 目录、registry 路径，以及 `git`、`cargo`、`rustup`、`claude`、`opencode` 的检测状态。它也会提示是否需要把 `rsenvforge` 管理的 bin 目录加入 `PATH`。
