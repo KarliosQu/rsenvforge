@@ -6,8 +6,8 @@ use super::constants::{BUILTIN_CONFIG, CONFIG_FILE};
 use super::error::ForgeError;
 use super::fsutil::read_to_string;
 use super::models::{
-    Agent, InstallConfig, InstallItem, InstallKind, LoadedConfig, Profile, ProfileDef, SkillDef,
-    ToolDef,
+    Agent, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef, Profile,
+    ProfileDef, SkillDef, ToolDef,
 };
 use super::paths::{config_dir, manifest_config_path};
 use super::util::resolve_source;
@@ -62,6 +62,7 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<LoadedConfig, ForgeEr
 
 pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
     let mut profiles: BTreeMap<String, ProfileDef> = BTreeMap::new();
+    let mut preinstall = PreinstallDef::default();
     let mut items = Vec::new();
     let mut tools = Vec::new();
     let mut skills = Vec::new();
@@ -128,6 +129,32 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             continue;
         }
 
+        if line.starts_with("[preinstall.") && line.ends_with(']') {
+            flush_raw(
+                &mut current_item,
+                &mut current_tool,
+                &mut current_skill,
+                &mut items,
+                &mut tools,
+                &mut skills,
+            )?;
+            let platform = line
+                .trim_start_matches("[preinstall.")
+                .trim_end_matches(']')
+                .trim();
+            section = match platform {
+                "windows" => Section::PreinstallWindows,
+                "linux" => Section::PreinstallLinux,
+                _ => {
+                    return Err(ForgeError::Parse(format!(
+                        "第 {} 行：preinstall 只支持 windows/linux",
+                        line_number + 1
+                    )))
+                }
+            };
+            continue;
+        }
+
         let Some((key, value)) = line.split_once('=') else {
             return Err(ForgeError::Parse(format!(
                 "第 {} 行：需要 key = value",
@@ -152,6 +179,24 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     }
                 }
             }
+            Section::PreinstallWindows => match key {
+                "commands" => preinstall.windows = parse_string_array(value)?,
+                _ => {
+                    return Err(ForgeError::Parse(format!(
+                        "第 {} 行：preinstall.windows 只支持 commands",
+                        line_number + 1
+                    )))
+                }
+            },
+            Section::PreinstallLinux => match key {
+                "commands" => preinstall.linux = parse_string_array(value)?,
+                _ => {
+                    return Err(ForgeError::Parse(format!(
+                        "第 {} 行：preinstall.linux 只支持 commands",
+                        line_number + 1
+                    )))
+                }
+            },
             Section::Item => {
                 let Some(item) = current_item.as_mut() else {
                     return Err(ForgeError::Parse("item 字段不在 [[items]] 中".to_string()));
@@ -217,6 +262,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
 
     Ok(InstallConfig {
         profiles,
+        preinstall,
         items,
         tools,
         skills,
@@ -228,6 +274,7 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     for (profile, def) in config.profiles {
         builtin.profiles.insert(profile, def);
     }
+    builtin.preinstall = config.preinstall;
     extend_or_replace_tools(&mut builtin.tools, config.tools);
     extend_or_replace_skills(&mut builtin.skills, config.skills);
     builtin.items = config.items;
@@ -275,8 +322,12 @@ pub(crate) fn tools_for_names(
 ) -> Result<Vec<ToolDef>, ForgeError> {
     let mut tools = Vec::new();
     for name in names {
-        if let Some(tool) = builtin_cargo_tool(name)
-            .or_else(|| config.tools.iter().find(|tool| &tool.name == name).cloned())
+        if let Some(tool) = config
+            .tools
+            .iter()
+            .find(|tool| &tool.name == name)
+            .cloned()
+            .or_else(|| builtin_cargo_tool(name))
         {
             tools.push(tool);
         } else {
@@ -469,6 +520,8 @@ fn flush_raw(
 enum Section {
     None,
     Profile(String),
+    PreinstallWindows,
+    PreinstallLinux,
     Item,
     Tool,
     Skill,

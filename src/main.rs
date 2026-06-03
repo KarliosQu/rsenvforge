@@ -62,13 +62,13 @@ fn cmd_install(args: &[String]) -> Result<(), String> {
         index += 1;
     }
 
-    let entries = install_profile(&options).map_err(|error| error.to_string())?;
+    let report = install_profile(&options).map_err(|error| error.to_string())?;
     println!(
         "安装流程完成：{} 条安装记录，等级 {}",
-        entries.len(),
+        report.entries.len(),
         options.profile.as_str()
     );
-    for entry in entries {
+    for entry in report.entries {
         println!(
             "{} {} -> {} 个目标",
             entry.kind.as_str(),

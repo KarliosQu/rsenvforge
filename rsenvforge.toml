@@ -1,4 +1,6 @@
 # rsenvforge 默认安装表单
+#
+# 字段值为 "0" 表示该工具不支持对应平台，rsenvforge 会直接提示并跳过检测/安装。
 
 [profiles.light]
 tools = ["rust"]
@@ -9,7 +11,6 @@ items = []
 tools = [
   "rust",
   "cargo-llvm-cov",
-  "python",
   "bindgen-cli",
   "cargo-audit",
   "cargo-deny",
@@ -17,22 +18,20 @@ tools = [
   "cargo-udeps",
   "cargo-bloat",
   "flamegraph-rs",
-  "perf",
   "cargo-msrv",
   "cargo-semver-checks",
+  "nodejs",
   "cpp2rust-demo",
   "c2rust-demo",
   "rust-checker",
-  "gitnexus",
 ]
-skills = ["openspec", "oh-my-opencode", "superpowers"]
+skills = []
 items = []
 
 [profiles.full]
 tools = [
   "rust",
   "cargo-llvm-cov",
-  "python",
   "bindgen-cli",
   "cargo-audit",
   "cargo-deny",
@@ -40,15 +39,16 @@ tools = [
   "cargo-udeps",
   "cargo-bloat",
   "flamegraph-rs",
-  "perf",
   "cargo-msrv",
   "cargo-semver-checks",
+  "nodejs",
   "cpp2rust-demo",
   "c2rust-demo",
   "rust-checker",
+  "python",
+  "perf",
   "gitnexus",
   "valgrind",
-  "asan",
   "CMake",
   "Ninja",
   "Clang/libclang",
@@ -58,31 +58,191 @@ tools = [
 skills = ["openspec", "oh-my-opencode", "superpowers"]
 items = []
 
-# 无法确定 cargo install 方案的系统工具放在 [[tools]] 中。
-# 如果你确认了官方安装方式，可以填入 install_windows/install_linux。
+[preinstall.linux]
+commands = ["sudo apt-get update"]
+
+[preinstall.windows]
+commands = []
+
+[[tools]]
+name = "rust"
+check_windows = "rustup --version"
+check_linux = "rustup --version"
+install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
+install_linux = "rustup toolchain install stable && rustup component add rustfmt clippy"
+
+[[tools]]
+name = "cargo-llvm-cov"
+check_windows = "cargo llvm-cov --version"
+check_linux = "cargo llvm-cov --version"
+install_windows = "cargo install cargo-llvm-cov"
+install_linux = "cargo install cargo-llvm-cov"
+
+[[tools]]
+name = "bindgen-cli"
+check_windows = "bindgen --version"
+check_linux = "bindgen --version"
+install_windows = "cargo install bindgen-cli"
+install_linux = "cargo install bindgen-cli"
+
+[[tools]]
+name = "cargo-audit"
+check_windows = "cargo audit --version"
+check_linux = "cargo audit --version"
+install_windows = "cargo install cargo-audit"
+install_linux = "cargo install cargo-audit"
+
+[[tools]]
+name = "cargo-deny"
+check_windows = "cargo deny --version"
+check_linux = "cargo deny --version"
+install_windows = "cargo install cargo-deny"
+install_linux = "cargo install cargo-deny"
+
+[[tools]]
+name = "cargo-geiger"
+check_windows = "cargo geiger --version"
+check_linux = "cargo geiger --version"
+install_windows = "cargo install cargo-geiger"
+install_linux = "cargo install cargo-geiger"
+
+[[tools]]
+name = "cargo-udeps"
+check_windows = "cargo udeps --version"
+check_linux = "cargo udeps --version"
+install_windows = "cargo install cargo-udeps"
+install_linux = "cargo install cargo-udeps"
+
+[[tools]]
+name = "cargo-bloat"
+check_windows = "cargo bloat --version"
+check_linux = "cargo bloat --version"
+install_windows = "cargo install cargo-bloat"
+install_linux = "cargo install cargo-bloat"
+
+[[tools]]
+name = "flamegraph-rs"
+check_windows = "flamegraph --version"
+check_linux = "flamegraph --version"
+install_windows = "cargo install flamegraph"
+install_linux = "cargo install flamegraph"
+
+[[tools]]
+name = "cargo-msrv"
+check_windows = "cargo msrv --version"
+check_linux = "cargo msrv --version"
+install_windows = "cargo install cargo-msrv"
+install_linux = "cargo install cargo-msrv"
+
+[[tools]]
+name = "cargo-semver-checks"
+check_windows = "cargo semver-checks --version"
+check_linux = "cargo semver-checks --version"
+install_windows = "cargo install cargo-semver-checks"
+install_linux = "cargo install cargo-semver-checks"
+
+[[tools]]
+name = "nodejs"
+check_windows = "node --version && npm --version"
+check_linux = "node --version && npm --version"
+install_windows = "winget install OpenJS.NodeJS.LTS"
+install_linux = "sudo apt-get install -y nodejs npm"
+
+[[tools]]
+name = "cpp2rust-demo"
+check_windows = "cpp2rust-demo --version"
+check_linux = "cpp2rust-demo --version"
+install_windows = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo"
+install_linux = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo"
+
+[[tools]]
+name = "c2rust-demo"
+check_windows = "c2rust-demo --version"
+check_linux = "c2rust-demo --version"
+install_windows = "cargo install --git https://github.com/LuuuXXX/c2rust-demo"
+install_linux = "cargo install --git https://github.com/LuuuXXX/c2rust-demo"
+
+[[tools]]
+name = "rust-checker"
+check_windows = "rust-checker --version"
+check_linux = "rust-checker --version"
+install_windows = "cargo install --git https://github.com/LuuuXXX/rust-checker"
+install_linux = "cargo install --git https://github.com/LuuuXXX/rust-checker"
 
 [[tools]]
 name = "python"
-check = "python --version"
-# install_windows = "winget install Python.Python.3.12"
-# install_linux = "sudo apt-get update && sudo apt-get install -y python3 python3-pip"
+check_windows = "python --version"
+check_linux = "python3 --version"
+install_windows = "winget install Python.Python.3.12"
+install_linux = "sudo apt-get install -y python3 python3-pip"
+
+[[tools]]
+name = "perf"
+check_windows = "0"
+check_linux = "perf --version"
+install_windows = "0"
+install_linux = "sudo apt-get install -y linux-tools-common linux-tools-generic linux-tools-$(uname -r)"
 
 [[tools]]
 name = "gitnexus"
-check = "gitnexus --version"
-# install = "请在确认官方安装源后填写"
+check_windows = "gitnexus --version"
+check_linux = "gitnexus --version"
+install_windows = "npm install -g gitnexus"
+install_linux = "npm install -g gitnexus"
+
+[[tools]]
+name = "valgrind"
+check_windows = "0"
+check_linux = "valgrind --version"
+install_windows = "0"
+install_linux = "sudo apt-get install -y valgrind"
+
+[[tools]]
+name = "CMake"
+check_windows = "cmake --version"
+check_linux = "cmake --version"
+install_windows = "winget install Kitware.CMake"
+install_linux = "sudo apt-get install -y cmake"
+
+[[tools]]
+name = "Ninja"
+check_windows = "ninja --version"
+check_linux = "ninja --version"
+install_windows = "winget install Ninja-build.Ninja"
+install_linux = "sudo apt-get install -y ninja-build"
+
+[[tools]]
+name = "Clang/libclang"
+check_windows = "clang --version"
+check_linux = "clang --version"
+install_windows = "winget install LLVM.LLVM"
+install_linux = "sudo apt-get install -y clang lld libclang-dev"
+
+[[tools]]
+name = "llvm-tools-preview"
+check_windows = "rustup component list --installed"
+check_linux = "rustup component list --installed"
+install_windows = "rustup component add llvm-tools-preview"
+install_linux = "rustup component add llvm-tools-preview"
+
+[[tools]]
+name = "clang++/g++"
+check_windows = "clang++ --version"
+check_linux = "g++ --version"
+install_windows = "winget install LLVM.LLVM"
+install_linux = "sudo apt-get install -y g++ clang"
 
 [[skills]]
 name = "openspec"
-source = "D:/your/local/skills/openspec"
+source = "https://github.com/Fission-AI/OpenSpec.git"
 agents = ["claude", "opencode"]
 
 [[skills]]
 name = "oh-my-opencode"
-source = "D:/your/local/skills/oh-my-opencode"
+source = "https://github.com/code-yeongyu/oh-my-openagent.git"
 agents = ["opencode"]
 
 [[skills]]
 name = "superpowers"
-source = "D:/your/local/skills/superpowers"
+source = "https://github.com/obra/superpowers.git"
 agents = ["claude", "opencode"]

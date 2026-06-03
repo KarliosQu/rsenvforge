@@ -112,6 +112,10 @@ impl ToolDef {
             self.install_linux.as_deref().or(self.install.as_deref())
         }
     }
+
+    pub(crate) fn supports_current_platform(&self) -> bool {
+        !matches!(self.check_command(), Some("0")) && !matches!(self.install_command(), Some("0"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,9 +135,26 @@ pub struct ProfileDef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallConfig {
     pub profiles: BTreeMap<String, ProfileDef>,
+    pub preinstall: PreinstallDef,
     pub items: Vec<InstallItem>,
     pub tools: Vec<ToolDef>,
     pub skills: Vec<SkillDef>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PreinstallDef {
+    pub windows: Vec<String>,
+    pub linux: Vec<String>,
+}
+
+impl PreinstallDef {
+    pub(crate) fn commands_for_current_platform(&self) -> &[String] {
+        if cfg!(windows) {
+            &self.windows
+        } else {
+            &self.linux
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +212,7 @@ pub struct ToolStatus {
     pub installed: bool,
     pub version: Option<String>,
     pub installable: bool,
+    pub supported: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,11 +230,17 @@ pub struct InstallPreview {
     pub skills: Vec<SkillStatus>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallReport {
+    pub entries: Vec<RegistryEntry>,
+    pub final_preview: InstallPreview,
+}
+
 impl InstallPreview {
     pub fn missing_tools(&self) -> Vec<&ToolStatus> {
         self.tools
             .iter()
-            .filter(|status| !status.installed)
+            .filter(|status| status.supported && !status.installed)
             .collect()
     }
 

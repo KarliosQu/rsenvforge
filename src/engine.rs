@@ -20,8 +20,8 @@ pub use installer::{
 };
 pub use models::{
     Agent, CrateCandidate, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview,
-    LoadedConfig, Profile, ProfileDef, RegistryEntry, SkillCandidate, SkillDef, SkillStatus,
-    ToolDef, ToolStatus,
+    InstallReport, LoadedConfig, Profile, ProfileDef, RegistryEntry, SkillCandidate, SkillDef,
+    SkillStatus, ToolDef, ToolStatus,
 };
 pub use paths::{app_home, config_dir, managed_bin_dir, manifest_config_path, registry_path};
 pub use registry::{read_registry, write_registry};
@@ -55,6 +55,9 @@ mod tests {
             skills = ["openspec"]
             items = []
 
+            [preinstall.linux]
+            commands = ["sudo apt-get update"]
+
             [[tools]]
             name = "python"
             check = "python --version"
@@ -69,6 +72,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(config.profiles["standard"].tools, vec!["rust", "python"]);
+        assert_eq!(config.preinstall.linux, vec!["sudo apt-get update"]);
         assert_eq!(config.tools[0].name, "python");
         assert_eq!(
             config.skills[0].agents,
@@ -113,6 +117,41 @@ mod tests {
 
         assert_eq!(loaded.path, Some(manifest_config_path()));
         assert!(!loaded.builtin);
+    }
+
+    #[test]
+    fn zero_check_marks_tool_as_unsupported() {
+        let config = parse_config(
+            r#"
+            [profiles.light]
+            tools = ["unsupported-demo"]
+            skills = []
+            items = []
+
+            [profiles.standard]
+            tools = ["unsupported-demo"]
+            skills = []
+            items = []
+
+            [profiles.full]
+            tools = ["unsupported-demo"]
+            skills = []
+            items = []
+
+            [[tools]]
+            name = "unsupported-demo"
+            check_windows = "0"
+            check_linux = "0"
+            install_windows = "0"
+            install_linux = "0"
+            "#,
+        )
+        .unwrap();
+
+        let preview = preview_install(&config, Profile::Light).unwrap();
+        assert_eq!(preview.tools[0].name, "unsupported-demo");
+        assert!(!preview.tools[0].supported);
+        assert!(preview.missing_tools().is_empty());
     }
 
     #[test]

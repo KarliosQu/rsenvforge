@@ -10,8 +10,8 @@ use super::discovery::{discover_crates, discover_skills};
 use super::error::ForgeError;
 use super::fsutil::{copy_dir, copy_file, create_dir_all};
 use super::models::{
-    Agent, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview, Profile,
-    RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
+    Agent, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview, InstallReport,
+    Profile, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
 use super::process::{command_status_text, run_shell, run_shell_capture};
@@ -21,7 +21,7 @@ use super::util::{
     shell_quote_str, source_name,
 };
 
-pub fn install_profile(options: &InstallOptions) -> Result<Vec<RegistryEntry>, ForgeError> {
+pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeError> {
     let loaded = load_config(options.config_path.as_deref())?;
     let config = resolve_config_sources(loaded.config, loaded.path.as_deref());
     let preview = preview_install(&config, options.profile)?;
@@ -31,8 +31,13 @@ pub fn install_profile(options: &InstallOptions) -> Result<Vec<RegistryEntry>, F
     let missing_skills = preview.missing_skills();
     if missing_tools.is_empty() && missing_skills.is_empty() {
         println!("所有工具和 skill 均已安装。");
-        install_legacy_items(&config, options)?;
-        return read_registry();
+        let entries = install_legacy_items(&config, options)?;
+        let final_preview = preview_install(&config, options.profile)?;
+        print_install_complete(&final_preview);
+        return Ok(InstallReport {
+            entries,
+            final_preview,
+        });
     }
 
     println!(
@@ -58,13 +63,22 @@ pub fn install_profile(options: &InstallOptions) -> Result<Vec<RegistryEntry>, F
 
     if !confirm_install()? {
         println!("用户取消安装。");
-        return Ok(Vec::new());
+        return Ok(InstallReport {
+            entries: Vec::new(),
+            final_preview: preview,
+        });
     }
 
+    run_preinstall_commands(&config, options.profile, &preview)?;
     install_missing_tools(&config, options.profile, &preview)?;
     install_missing_skills(&config, options.profile, &preview, options.force)?;
-    install_legacy_items(&config, options)?;
-    read_registry()
+    let entries = install_legacy_items(&config, options)?;
+    let final_preview = preview_install(&config, options.profile)?;
+    print_install_complete(&final_preview);
+    Ok(InstallReport {
+        entries,
+        final_preview,
+    })
 }
 
 pub fn preview_install(
@@ -98,7 +112,9 @@ pub fn preview_install(
 pub fn print_preview(preview: &InstallPreview) {
     println!("工具检测结果：");
     for status in &preview.tools {
-        if status.installed {
+        if !status.supported {
+            println!("  {}：不支持{}环境", status.name, current_platform_name());
+        } else if status.installed {
             println!(
                 "  已安装：{} ({})",
                 status.name,
@@ -121,6 +137,30 @@ pub fn print_preview(preview: &InstallPreview) {
             println!("  已安装：{} -> {}", status.name, status.agent.as_str());
         } else {
             println!("  尚未安装：{} -> {}", status.name, status.agent.as_str());
+        }
+    }
+}
+
+fn print_install_complete(preview: &InstallPreview) {
+    println!("已安装完成");
+    for status in &preview.tools {
+        if !status.supported {
+            println!("{}：不支持{}环境", status.name, current_platform_name());
+        } else if status.installed {
+            println!(
+                "已安装【{}】+【{}】",
+                status.name,
+                status.version.as_deref().unwrap_or("无法读取版本")
+            );
+        }
+    }
+    for status in &preview.skills {
+        if status.installed {
+            println!(
+                "已安装【{} -> {}】+【无版本信息】",
+                status.name,
+                status.agent.as_str()
+            );
         }
     }
 }
@@ -221,6 +261,15 @@ pub fn doctor_report() -> Vec<String> {
 }
 
 fn check_tool(tool: &ToolDef) -> ToolStatus {
+    if !tool.supports_current_platform() {
+        return ToolStatus {
+            name: tool.name.clone(),
+            installed: false,
+            version: Some(format!("不支持{}环境", current_platform_name())),
+            installable: false,
+            supported: false,
+        };
+    }
     if tool.name == "rust" {
         return check_rust_toolchain(tool);
     }
@@ -230,6 +279,7 @@ fn check_tool(tool: &ToolDef) -> ToolStatus {
             installed: false,
             version: None,
             installable: tool.install_command().is_some(),
+            supported: true,
         };
     };
     let result = run_shell_capture(command);
@@ -238,6 +288,7 @@ fn check_tool(tool: &ToolDef) -> ToolStatus {
         installed: result.is_ok(),
         version: result.ok().map(first_line),
         installable: tool.install_command().is_some(),
+        supported: true,
     }
 }
 
@@ -265,6 +316,15 @@ fn check_rust_toolchain(tool: &ToolDef) -> ToolStatus {
             Some(versions.join("; "))
         },
         installable: tool.install_command().is_some(),
+        supported: true,
+    }
+}
+
+fn current_platform_name() -> &'static str {
+    if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
     }
 }
 
@@ -326,6 +386,49 @@ fn install_missing_tools(
             ForgeError::Command(format!("工具 {} 安装失败：{error}", tool.name))
         })?;
         println!("工具 {} 安装完成。", tool.name);
+    }
+    Ok(())
+}
+
+fn run_preinstall_commands(
+    config: &InstallConfig,
+    profile: Profile,
+    preview: &InstallPreview,
+) -> Result<(), ForgeError> {
+    let commands = config.preinstall.commands_for_current_platform();
+    if commands.is_empty() {
+        return Ok(());
+    }
+
+    let missing_names: BTreeSet<&str> = preview
+        .missing_tools()
+        .into_iter()
+        .filter(|status| status.installable)
+        .map(|status| status.name.as_str())
+        .collect();
+    if missing_names.is_empty() {
+        return Ok(());
+    }
+
+    let profile_def = config
+        .profiles
+        .get(profile.as_str())
+        .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
+    let tools = tools_for_names(config, &profile_def.tools)?;
+    let needs_preinstall = tools.iter().any(|tool| {
+        missing_names.contains(tool.name.as_str())
+            && tool
+                .install_command()
+                .is_some_and(|command| command.contains("apt-get") || command.contains("apt "))
+    });
+    if !needs_preinstall {
+        return Ok(());
+    }
+
+    println!("执行安装前准备命令：");
+    for command in commands {
+        println!("  {}", command);
+        run_shell(command)?;
     }
     Ok(())
 }
