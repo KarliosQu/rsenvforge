@@ -4,7 +4,7 @@ use std::process;
 
 use rsenvforge::{
     doctor_report, install_crate_source, install_profile, install_skill_source, read_registry,
-    update_installed, Agent, InstallOptions, Profile,
+    remove_installed, update_installed, Agent, InstallKind, InstallOptions, Profile,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -27,6 +27,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "install-skill" => cmd_install_skill(&args[1..]),
         "install-crate" => cmd_install_crate(&args[1..]),
         "update" => cmd_update(&args[1..]),
+        "remove" | "uninstall" => cmd_remove(&args[1..]),
         "list" => cmd_list(&args[1..]),
         "doctor" => cmd_doctor(&args[1..]),
         "-h" | "--help" | "help" => {
@@ -164,6 +165,35 @@ fn cmd_update(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn cmd_remove(args: &[String]) -> Result<(), String> {
+    let mut name = None;
+    let mut kind = None;
+    let mut force = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--kind" => {
+                index += 1;
+                kind = Some(parse_install_kind(value_after(args, index, "--kind")?)?);
+            }
+            "--force" | "-f" => force = true,
+            value if value.starts_with('-') => return Err(format!("未知 remove 选项：{value}")),
+            value => {
+                if name.replace(value.to_string()).is_some() {
+                    return Err("remove 只能接受一个名称".to_string());
+                }
+            }
+        }
+        index += 1;
+    }
+
+    let name = name.ok_or_else(|| "缺少要删除的安装项名称".to_string())?;
+    let removed = remove_installed(&name, kind, force).map_err(|error| error.to_string())?;
+    println!("已删除 {} 条安装记录", removed.len());
+    Ok(())
+}
+
 fn cmd_list(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
         return Err("list 不接受参数".to_string());
@@ -196,6 +226,14 @@ fn cmd_doctor(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn parse_install_kind(value: &str) -> Result<InstallKind, String> {
+    match value {
+        "skill" => Ok(InstallKind::Skill),
+        "crate" => Ok(InstallKind::Crate),
+        _ => Err(format!("未知安装项类型：{value}，可用值为 skill|crate")),
+    }
+}
+
 fn parse_agent_list(value: &str) -> Result<Vec<Agent>, String> {
     if value == "both" {
         return Ok(vec![Agent::Claude, Agent::OpenCode]);
@@ -221,9 +259,10 @@ fn print_help() {
 
 命令：
     install [light|standard|full]  从 rsenvforge.toml 检测并安装，默认 standard
-    install-skill <source>         从 git 地址或本地路径安装 agent skill
-    install-crate <source>         从 git 地址或本地路径安装 Rust binary crate
+    install-skill <source>         从 Git 地址或本地路径安装 agent skill
+    install-crate <source>         从 Git 地址或本地路径安装 Rust binary crate
     update                         更新 rsenvforge 记录过的安装项
+    remove <name>                  删除 rsenvforge 记录过的安装项
     list                           显示安装记录
     doctor                         检查本地工具和管理目录
     help                           显示帮助
@@ -235,6 +274,8 @@ fn print_help() {
     install --norustup             crate 安装时跳过 rustup 检查
     install-skill --agent <value>  claude、opencode 或 both
     install-crate --bin <name>     只安装指定 binary
+    remove --kind <value>          skill 或 crate
+    remove --force                 跳过删除确认
 "
     );
 }

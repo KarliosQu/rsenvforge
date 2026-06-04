@@ -8,14 +8,14 @@ use super::config::{load_config, resolve_config_sources, skills_for_names, tools
 use super::constants::{CONFIG_FILE, SKILL_FILE};
 use super::discovery::{discover_crates, discover_skills};
 use super::error::ForgeError;
-use super::fsutil::{copy_dir, copy_file, create_dir_all};
+use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_file};
 use super::models::{
     Agent, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview, InstallReport,
     Profile, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
 use super::process::{command_status_text, run_shell, run_shell_capture};
-use super::registry::{append_registry, read_registry};
+use super::registry::{append_registry, read_registry, write_registry};
 use super::util::{
     exe_name, first_line, fnv1a, home_dir, join_names, looks_like_git, now_secs, shell_quote,
     shell_quote_str, source_name,
@@ -246,6 +246,42 @@ pub fn update_installed(force: bool, norustup: bool) -> Result<Vec<RegistryEntry
     Ok(updated)
 }
 
+pub fn remove_installed(
+    name: &str,
+    kind: Option<InstallKind>,
+    force: bool,
+) -> Result<Vec<RegistryEntry>, ForgeError> {
+    let entries = read_registry()?;
+    let (matched, remaining): (Vec<_>, Vec<_>) = entries.into_iter().partition(|entry| {
+        entry.name == name && kind.is_none_or(|expected| entry.kind == expected)
+    });
+
+    if matched.is_empty() {
+        return Err(ForgeError::Config(format!("没有找到安装记录：{}", name)));
+    }
+
+    println!("将删除以下安装记录：");
+    for entry in &matched {
+        println!("  {} {}", entry.kind.as_str(), entry.name);
+        for target in &entry.targets {
+            println!("    {}", target.display());
+        }
+    }
+
+    if !force && !confirm_remove()? {
+        println!("用户取消删除。");
+        return Ok(Vec::new());
+    }
+
+    for entry in &matched {
+        for target in &entry.targets {
+            remove_target(target)?;
+        }
+    }
+    write_registry(&remaining)?;
+    Ok(matched)
+}
+
 pub fn doctor_report() -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(format!("rsenvforge 数据目录：{}", app_home().display()));
@@ -258,6 +294,29 @@ pub fn doctor_report() -> Vec<String> {
     lines.push(format!("opencode：{}", command_status_text("opencode")));
     lines.push("请将托管 bin 目录加入 PATH，以便直接运行已安装 Rust 工具。".to_string());
     lines
+}
+
+fn confirm_remove() -> Result<bool, ForgeError> {
+    println!("请确认是否删除以上安装项？(Y/N)");
+    let mut answer = String::new();
+    io::stdin()
+        .read_line(&mut answer)
+        .map_err(|source| ForgeError::Io {
+            path: PathBuf::from("stdin"),
+            source,
+        })?;
+    Ok(matches!(answer.trim(), "Y" | "y"))
+}
+
+fn remove_target(target: &Path) -> Result<(), ForgeError> {
+    if target.is_dir() {
+        remove_dir_all(target)
+    } else if target.is_file() {
+        remove_file(target)
+    } else {
+        println!("目标不存在，跳过：{}", target.display());
+        Ok(())
+    }
 }
 
 fn check_tool(tool: &ToolDef) -> ToolStatus {

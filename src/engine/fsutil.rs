@@ -72,6 +72,13 @@ pub(crate) fn remove_dir_all(path: &Path) -> Result<(), ForgeError> {
     })
 }
 
+pub(crate) fn remove_file(path: &Path) -> Result<(), ForgeError> {
+    fs::remove_file(path).map_err(|source| ForgeError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
 pub(crate) fn read_to_string(path: &Path) -> Result<String, ForgeError> {
     fs::read_to_string(path).map_err(|source| ForgeError::Io {
         path: path.to_path_buf(),

@@ -16,7 +16,7 @@ pub use discovery::{discover_crates, discover_skills};
 pub use error::ForgeError;
 pub use installer::{
     doctor_report, install_crate_source, install_profile, install_skill_source, preview_install,
-    print_preview, update_installed,
+    print_preview, remove_installed, update_installed,
 };
 pub use models::{
     Agent, CrateCandidate, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview,

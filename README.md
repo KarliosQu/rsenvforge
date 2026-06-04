@@ -35,6 +35,7 @@ rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup
 rsenvforge install-skill <source> --agent <claude|opencode|both> [--force]
 rsenvforge install-crate <source> [--norustup] [--force] [--bin <name>]
 rsenvforge update [--force] [--norustup]
+rsenvforge remove <name> [--kind <skill|crate>] [--force]
 rsenvforge list
 rsenvforge doctor
 rsenvforge help
@@ -214,6 +215,23 @@ rsenvforge update
 ```
 
 `update` 只更新 registry 中已有的安装项，不会扫描和安装配置文件里的新项目。
+
+## 删除
+
+`remove` 会删除 `rsenvforge` registry 中记录过的安装项，并从 registry 移除对应记录：
+
+```powershell
+rsenvforge remove <name>
+rsenvforge remove <name> --kind skill
+rsenvforge remove <name> --kind crate --force
+```
+
+说明：
+
+- `--kind skill|crate` 用于在同名记录中限定类型。
+- `--force` 跳过删除确认。
+- 删除只处理 registry 中记录的目标路径，例如 skill 目录或 `install-crate` 复制到托管 bin 目录的二进制。
+- 通过系统包管理器、`cargo install` 或 `winget/apt-get/npm` 安装的 profile 工具当前不会写入 registry，因此 `remove` 不会卸载这些系统级工具。
 
 ## 环境变量
 

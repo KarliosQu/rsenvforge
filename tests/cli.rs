@@ -244,6 +244,55 @@ fn update_reinstalls_registry_items() {
 }
 
 #[test]
+fn remove_deletes_registry_targets() {
+    let temp = test_dir("remove_deletes_registry_targets");
+    let source = temp.join("source");
+    let skill = source.join("skills").join("removable");
+    let home = temp.join("home");
+    let claude = temp.join("claude-skills");
+    fs::create_dir_all(&claude).unwrap();
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: removable\n---\n# demo\n",
+    )
+    .unwrap();
+
+    let install = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .env("RSENVFORGE_HOME", &home)
+        .env("RSENVFORGE_CLAUDE_DIR", &claude)
+        .args([
+            "install-skill",
+            source.to_str().unwrap(),
+            "--agent",
+            "claude",
+            "--force",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&install);
+    assert!(claude.join("removable").is_dir());
+
+    let remove = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .env("RSENVFORGE_HOME", &home)
+        .args(["remove", "source", "--kind", "skill", "--force"])
+        .output()
+        .unwrap();
+    assert_success(&remove);
+    assert!(!claude.join("removable").exists());
+
+    let list = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .env("RSENVFORGE_HOME", &home)
+        .args(["list"])
+        .output()
+        .unwrap();
+    assert_success(&list);
+    assert!(!String::from_utf8_lossy(&list.stdout).contains("source"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn install_declines_when_user_answers_n() {
     let temp = test_dir("install_declines_when_user_answers_n");
     let home = temp.join("home");
