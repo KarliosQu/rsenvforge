@@ -14,7 +14,8 @@ use super::models::{
     Profile, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
-use super::process::{command_status_text, run_shell, run_shell_capture};
+use super::process::{command_status_text, run_shell_capture, run_shell_labeled};
+use super::proxy::{print_proxy_report, proxy_report};
 use super::registry::{append_registry, read_registry, write_registry};
 use super::util::{
     exe_name, first_line, fnv1a, home_dir, join_names, looks_like_git, now_secs, shell_quote,
@@ -22,6 +23,7 @@ use super::util::{
 };
 
 pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeError> {
+    print_proxy_report();
     let loaded = load_config(options.config_path.as_deref())?;
     let config = resolve_config_sources(loaded.config, loaded.path.as_deref());
     let preview = preview_install(&config, options.profile)?;
@@ -287,6 +289,7 @@ pub fn doctor_report() -> Vec<String> {
     lines.push(format!("rsenvforge 数据目录：{}", app_home().display()));
     lines.push(format!("托管 bin 目录：{}", managed_bin_dir().display()));
     lines.push(format!("安装记录：{}", registry_path().display()));
+    lines.extend(proxy_report());
     lines.push(format!("git：{}", command_status_text("git")));
     lines.push(format!("cargo：{}", command_status_text("cargo")));
     lines.push(format!("rustup：{}", command_status_text("rustup")));
@@ -441,7 +444,7 @@ fn install_missing_tools(
             continue;
         };
         println!("开始安装工具：{}", tool.name);
-        run_shell(command).map_err(|error| {
+        run_shell_labeled(&tool.name, command).map_err(|error| {
             ForgeError::Command(format!("工具 {} 安装失败：{error}", tool.name))
         })?;
         println!("工具 {} 安装完成。", tool.name);
@@ -454,7 +457,7 @@ fn run_preinstall_commands(
     profile: Profile,
     preview: &InstallPreview,
 ) -> Result<(), ForgeError> {
-    let commands = config.preinstall.commands_for_current_platform();
+    let commands = config.preinstall.commands_for_current_platform(profile);
     if commands.is_empty() {
         return Ok(());
     }
@@ -469,25 +472,10 @@ fn run_preinstall_commands(
         return Ok(());
     }
 
-    let profile_def = config
-        .profiles
-        .get(profile.as_str())
-        .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
-    let tools = tools_for_names(config, &profile_def.tools)?;
-    let needs_preinstall = tools.iter().any(|tool| {
-        missing_names.contains(tool.name.as_str())
-            && tool
-                .install_command()
-                .is_some_and(|command| command.contains("apt-get") || command.contains("apt "))
-    });
-    if !needs_preinstall {
-        return Ok(());
-    }
-
     println!("执行安装前准备命令：");
     for command in commands {
         println!("  {}", command);
-        run_shell(command)?;
+        run_shell_labeled("安装前准备命令", &command)?;
     }
     Ok(())
 }
@@ -727,10 +715,10 @@ fn prepare_source(source: &str, update: bool) -> Result<PathBuf, ForgeError> {
         .join(format!("{:016x}", fnv1a(source)));
     if cache_path.exists() {
         if update {
-            run_shell(&format!(
-                "git -C {} pull --ff-only",
-                shell_quote(&cache_path)
-            ))?;
+            run_shell_labeled(
+                &source_name(source),
+                &format!("git -C {} pull --ff-only", shell_quote(&cache_path)),
+            )?;
         }
         return Ok(cache_path);
     }
@@ -738,11 +726,14 @@ fn prepare_source(source: &str, update: bool) -> Result<PathBuf, ForgeError> {
     if let Some(parent) = cache_path.parent() {
         create_dir_all(parent)?;
     }
-    run_shell(&format!(
-        "git clone --depth 1 {} {}",
-        shell_quote_str(source),
-        shell_quote(&cache_path)
-    ))?;
+    run_shell_labeled(
+        &source_name(source),
+        &format!(
+            "git clone --depth 1 {} {}",
+            shell_quote_str(source),
+            shell_quote(&cache_path)
+        ),
+    )?;
     Ok(cache_path)
 }
 
@@ -752,11 +743,14 @@ fn build_and_copy_binary(manifest: &Path, bin: &str, target: &Path) -> Result<()
             "未找到 cargo，且没有匹配的预编译二进制。".to_string(),
         ));
     }
-    run_shell(&format!(
-        "cargo build --release --manifest-path {} --bin {}",
-        shell_quote(manifest),
-        shell_quote_str(bin)
-    ))?;
+    run_shell_labeled(
+        bin,
+        &format!(
+            "cargo build --release --manifest-path {} --bin {}",
+            shell_quote(manifest),
+            shell_quote_str(bin)
+        ),
+    )?;
     let built = manifest
         .parent()
         .ok_or_else(|| ForgeError::Config(format!("manifest 路径无效：{}", manifest.display())))?

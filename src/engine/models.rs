@@ -145,14 +145,83 @@ pub struct InstallConfig {
 pub struct PreinstallDef {
     pub windows: Vec<String>,
     pub linux: Vec<String>,
+    pub light: ProfilePreinstallDef,
+    pub standard: ProfilePreinstallDef,
+    pub full: ProfilePreinstallDef,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProfilePreinstallDef {
+    pub windows: Vec<String>,
+    pub linux: Vec<String>,
 }
 
 impl PreinstallDef {
-    pub(crate) fn commands_for_current_platform(&self) -> &[String] {
-        if cfg!(windows) {
-            &self.windows
-        } else {
-            &self.linux
+    pub(crate) fn commands_for_current_platform(&self, profile: Profile) -> Vec<String> {
+        let mut commands = current_platform_commands(&self.windows, &self.linux).to_vec();
+        for profile_def in self.included_profiles(profile) {
+            commands.extend(
+                current_platform_commands(&profile_def.windows, &profile_def.linux).to_vec(),
+            );
+        }
+        commands
+    }
+
+    pub(crate) fn profile_mut(&mut self, profile: Profile) -> &mut ProfilePreinstallDef {
+        match profile {
+            Profile::Light => &mut self.light,
+            Profile::Standard => &mut self.standard,
+            Profile::Full => &mut self.full,
+        }
+    }
+
+    fn included_profiles(&self, profile: Profile) -> Vec<&ProfilePreinstallDef> {
+        match profile {
+            Profile::Light => vec![&self.light],
+            Profile::Standard => vec![&self.light, &self.standard],
+            Profile::Full => vec![&self.light, &self.standard, &self.full],
+        }
+    }
+}
+
+fn current_platform_commands<'a>(windows: &'a [String], linux: &'a [String]) -> &'a [String] {
+    if cfg!(windows) {
+        windows
+    } else {
+        linux
+    }
+}
+
+impl ProfilePreinstallDef {
+    pub(crate) fn commands_mut(&mut self, platform: PreinstallPlatform) -> &mut Vec<String> {
+        match platform {
+            PreinstallPlatform::Windows => &mut self.windows,
+            PreinstallPlatform::Linux => &mut self.linux,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreinstallPlatform {
+    Windows,
+    Linux,
+}
+
+impl PreinstallPlatform {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "windows" => Some(Self::Windows),
+            "linux" => Some(Self::Linux),
+            _ => None,
+        }
+    }
+}
+
+impl PreinstallDef {
+    pub(crate) fn commands_mut(&mut self, platform: PreinstallPlatform) -> &mut Vec<String> {
+        match platform {
+            PreinstallPlatform::Windows => &mut self.windows,
+            PreinstallPlatform::Linux => &mut self.linux,
         }
     }
 }

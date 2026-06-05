@@ -4,6 +4,81 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, path::PathBuf};
 
 #[test]
+fn init_creates_default_config() {
+    let temp = test_dir("init_creates_default_config");
+    fs::create_dir_all(&temp).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .current_dir(&temp)
+        .args(["init"])
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    let config = temp.join("rsenvforge.toml");
+    assert!(config.is_file());
+    let text = fs::read_to_string(&config).unwrap();
+    let expected =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rsenvforge.toml"))
+            .unwrap();
+    assert_eq!(text, expected);
+    assert!(text.contains("[profiles.standard]"));
+    assert!(text.contains("nodejs"));
+    assert!(text.contains("openspec"));
+
+    let second = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .current_dir(&temp)
+        .args(["init"])
+        .output()
+        .unwrap();
+    assert!(!second.status.success());
+
+    let forced = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .current_dir(&temp)
+        .args(["init", "--force"])
+        .output()
+        .unwrap();
+    assert_success(&forced);
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn doctor_reports_proxy_settings() {
+    let temp = test_dir("doctor_reports_proxy_settings");
+    let home = temp.join("home");
+    let cargo_home = temp.join("cargo-home");
+    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(&cargo_home).unwrap();
+    fs::write(
+        cargo_home.join("config.toml"),
+        "[http]\nproxy = \"http://user:pass@127.0.0.1:7890\"\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .env("RSENVFORGE_HOME", temp.join("forge-home"))
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("CARGO_HOME", &cargo_home)
+        .env("http_proxy", "http://127.0.0.1:7890")
+        .env("https_proxy", "http://127.0.0.1:7891")
+        .args(["doctor"])
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("代理检查"));
+    assert!(stdout.contains("http_proxy：http://127.0.0.1:7890"));
+    assert!(stdout.contains("https_proxy：http://127.0.0.1:7891"));
+    assert!(stdout.contains("Cargo config：找到 1 行 proxy 配置"));
+    assert!(stdout.contains("proxy = \"http://***@127.0.0.1:7890\""));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn install_defaults_to_standard_profile() {
     let temp = test_dir("install_defaults_to_standard_profile");
     let source = temp.join("source");
@@ -132,6 +207,62 @@ fn install_light_and_full_use_selected_profiles() {
         .unwrap();
     assert_success(&full);
     assert!(claude.join("full-skill").is_dir());
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn preinstall_commands_are_profile_scoped() {
+    let temp = test_dir("preinstall_commands_are_profile_scoped");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["missing-demo"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["missing-demo"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = ["missing-demo"]
+        skills = []
+        items = []
+        [preinstall.standard.windows]
+        commands = ["echo preinstall-standard"]
+        [preinstall.standard.linux]
+        commands = ["echo preinstall-standard"]
+        [[tools]]
+        name = "missing-demo"
+        check_windows = "definitely-missing-rsenvforge-demo --version"
+        check_linux = "definitely-missing-rsenvforge-demo --version"
+        install_windows = "echo install missing-demo"
+        install_linux = "echo install missing-demo"
+        "#,
+    )
+    .unwrap();
+
+    let light = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\n",
+    );
+    assert_success(&light);
+    assert!(!String::from_utf8_lossy(&light.stdout).contains("preinstall-standard"));
+
+    let standard = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "standard", "--config", config.to_str().unwrap()]),
+        "Y\n",
+    );
+    assert_success(&standard);
+    assert!(String::from_utf8_lossy(&standard.stdout).contains("preinstall-standard"));
 
     fs::remove_dir_all(temp).unwrap();
 }

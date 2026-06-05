@@ -1,22 +1,69 @@
+use std::io::Read;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use super::error::ForgeError;
 
-pub(crate) fn run_shell(command: &str) -> Result<(), ForgeError> {
-    let output = shell_command(command)
-        .output()
+const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
+const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
+
+pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeError> {
+    let mut child = shell_command(command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|source| ForgeError::Io {
             path: PathBuf::from(command),
             source,
         })?;
-    if output.status.success() {
+
+    let output = Arc::new(Mutex::new(String::new()));
+    let stdout_handle = child
+        .stdout
+        .take()
+        .map(|stdout| collect_command_output(stdout, Arc::clone(&output)));
+    let stderr_handle = child
+        .stderr
+        .take()
+        .map(|stderr| collect_command_output(stderr, Arc::clone(&output)));
+
+    let started = Instant::now();
+    let mut next_notice = FIRST_PROGRESS_NOTICE_SECONDS;
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|source| ForgeError::Io {
+            path: PathBuf::from(command),
+            source,
+        })? {
+            break status;
+        }
+
+        let elapsed = started.elapsed().as_secs();
+        if elapsed >= next_notice {
+            print_progress_notice(label, elapsed, &output);
+            next_notice = next_notice.saturating_mul(2);
+        }
+
+        thread::sleep(Duration::from_secs(1));
+    };
+
+    join_output_thread(stdout_handle, command)?;
+    join_output_thread(stderr_handle, command)?;
+
+    if status.success() {
         Ok(())
     } else {
+        let output = output_snapshot(&output);
         Err(ForgeError::Command(format!(
             "{}\n{}",
             command,
-            String::from_utf8_lossy(&output.stderr)
+            if output.trim().is_empty() {
+                "命令未输出错误详情".to_string()
+            } else {
+                output
+            }
         )))
     }
 }
@@ -55,6 +102,65 @@ fn shell_command(command: &str) -> Command {
         cmd.arg("-c").arg(command);
         cmd
     }
+}
+
+fn collect_command_output<R>(mut reader: R, output: Arc<Mutex<String>>) -> thread::JoinHandle<()>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut buffer = [0; 1024];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(size) => push_output(&output, &String::from_utf8_lossy(&buffer[..size])),
+            }
+        }
+    })
+}
+
+fn push_output(output: &Arc<Mutex<String>>, text: &str) {
+    let Ok(mut output) = output.lock() else {
+        return;
+    };
+    output.push_str(text);
+    if output.len() <= PROGRESS_OUTPUT_LIMIT {
+        return;
+    }
+    let mut keep_from = output.len() - PROGRESS_OUTPUT_LIMIT;
+    while !output.is_char_boundary(keep_from) {
+        keep_from += 1;
+    }
+    output.drain(..keep_from);
+}
+
+fn print_progress_notice(label: &str, elapsed: u64, output: &Arc<Mutex<String>>) {
+    let snapshot = output_snapshot(output);
+    let progress = if snapshot.trim().is_empty() {
+        "暂无命令输出".to_string()
+    } else {
+        snapshot
+    };
+    println!("目前{label}的安装已经持续了{elapsed}秒，请注意，目前进度为：\n{progress}");
+}
+
+fn output_snapshot(output: &Arc<Mutex<String>>) -> String {
+    output
+        .lock()
+        .map(|output| output.clone())
+        .unwrap_or_default()
+}
+
+fn join_output_thread(
+    handle: Option<thread::JoinHandle<()>>,
+    command: &str,
+) -> Result<(), ForgeError> {
+    if let Some(handle) = handle {
+        handle
+            .join()
+            .map_err(|_| ForgeError::Command(format!("{command}\n读取命令输出时发生内部错误")))?;
+    }
+    Ok(())
 }
 
 pub(crate) fn command_status_text(command: &str) -> &'static str {

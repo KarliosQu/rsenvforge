@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::process;
 
 use rsenvforge::{
-    doctor_report, install_crate_source, install_profile, install_skill_source, read_registry,
-    remove_installed, update_installed, Agent, InstallKind, InstallOptions, Profile,
+    doctor_report, init_config, install_crate_source, install_profile, install_skill_source,
+    read_registry, remove_installed, update_installed, Agent, InstallKind, InstallOptions, Profile,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -23,6 +23,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
     };
 
     match command {
+        "init" => cmd_init(&args[1..]),
         "install" => cmd_install(&args[1..]),
         "install-skill" => cmd_install_skill(&args[1..]),
         "install-crate" => cmd_install_crate(&args[1..]),
@@ -40,6 +41,20 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         unknown => Err(format!("未知命令：{unknown}")),
     }
+}
+
+fn cmd_init(args: &[String]) -> Result<(), String> {
+    let mut force = false;
+    for arg in args {
+        match arg.as_str() {
+            "--force" | "-f" => force = true,
+            value => return Err(format!("未知 init 选项：{value}")),
+        }
+    }
+
+    let path = init_config(force).map_err(|error| error.to_string())?;
+    println!("已生成默认配置：{}", path.display());
+    Ok(())
 }
 
 fn cmd_install(args: &[String]) -> Result<(), String> {
@@ -258,6 +273,7 @@ fn print_help() {
     rsenvforge <command> [options]
 
 命令：
+    init [--force]                 在当前目录生成默认 rsenvforge.toml
     install [light|standard|full]  从 rsenvforge.toml 检测并安装，默认 standard
     install-skill <source>         从 Git 地址或本地路径安装 agent skill
     install-crate <source>         从 Git 地址或本地路径安装 Rust binary crate

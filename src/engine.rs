@@ -7,10 +7,11 @@ mod installer;
 mod models;
 mod paths;
 mod process;
+mod proxy;
 mod registry;
 mod util;
 
-pub use config::{load_config, parse_config};
+pub use config::{init_config, load_config, parse_config};
 pub use constants::{BUILTIN_CONFIG, CONFIG_FILE, REGISTRY_FILE, SKILL_FILE};
 pub use discovery::{discover_crates, discover_skills};
 pub use error::ForgeError;
@@ -58,6 +59,9 @@ mod tests {
             [preinstall.linux]
             commands = ["sudo apt-get update"]
 
+            [preinstall.standard.linux]
+            commands = ["sudo apt-get install -y pkg-config libssl-dev"]
+
             [[tools]]
             name = "python"
             check = "python --version"
@@ -73,6 +77,10 @@ mod tests {
 
         assert_eq!(config.profiles["standard"].tools, vec!["rust", "python"]);
         assert_eq!(config.preinstall.linux, vec!["sudo apt-get update"]);
+        assert_eq!(
+            config.preinstall.standard.linux,
+            vec!["sudo apt-get install -y pkg-config libssl-dev"]
+        );
         assert_eq!(config.tools[0].name, "python");
         assert_eq!(
             config.skills[0].agents,

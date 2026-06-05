@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 
 use super::constants::{BUILTIN_CONFIG, CONFIG_FILE};
 use super::error::ForgeError;
-use super::fsutil::read_to_string;
+use super::fsutil::{read_to_string, write_file};
 use super::models::{
-    Agent, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef, Profile,
-    ProfileDef, SkillDef, ToolDef,
+    Agent, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef,
+    PreinstallPlatform, Profile, ProfileDef, SkillDef, ToolDef,
 };
 use super::paths::{config_dir, manifest_config_path};
 use super::util::resolve_source;
@@ -58,6 +58,23 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<LoadedConfig, ForgeEr
         path: None,
         builtin: true,
     })
+}
+
+pub fn init_config(force: bool) -> Result<PathBuf, ForgeError> {
+    let path = env::current_dir()
+        .map_err(|source| ForgeError::Io {
+            path: PathBuf::from("."),
+            source,
+        })?
+        .join(CONFIG_FILE);
+    if path.exists() && !force {
+        return Err(ForgeError::Config(format!(
+            "{} 已存在，如需覆盖请添加 --force",
+            path.display()
+        )));
+    }
+    write_file(&path, BUILTIN_CONFIG)?;
+    Ok(path)
 }
 
 pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
@@ -138,20 +155,11 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 &mut tools,
                 &mut skills,
             )?;
-            let platform = line
+            let scope = line
                 .trim_start_matches("[preinstall.")
                 .trim_end_matches(']')
                 .trim();
-            section = match platform {
-                "windows" => Section::PreinstallWindows,
-                "linux" => Section::PreinstallLinux,
-                _ => {
-                    return Err(ForgeError::Parse(format!(
-                        "第 {} 行：preinstall 只支持 windows/linux",
-                        line_number + 1
-                    )))
-                }
-            };
+            section = parse_preinstall_section(scope, line_number + 1)?;
             continue;
         }
 
@@ -179,20 +187,19 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     }
                 }
             }
-            Section::PreinstallWindows => match key {
-                "commands" => preinstall.windows = parse_string_array(value)?,
-                _ => {
-                    return Err(ForgeError::Parse(format!(
-                        "第 {} 行：preinstall.windows 只支持 commands",
-                        line_number + 1
-                    )))
+            Section::Preinstall { profile, platform } => match key {
+                "commands" => {
+                    let commands = parse_string_array(value)?;
+                    match profile.as_deref().and_then(Profile::parse) {
+                        Some(profile) => {
+                            *preinstall.profile_mut(profile).commands_mut(*platform) = commands
+                        }
+                        None => *preinstall.commands_mut(*platform) = commands,
+                    }
                 }
-            },
-            Section::PreinstallLinux => match key {
-                "commands" => preinstall.linux = parse_string_array(value)?,
                 _ => {
                     return Err(ForgeError::Parse(format!(
-                        "第 {} 行：preinstall.linux 只支持 commands",
+                        "第 {} 行：preinstall 只支持 commands",
                         line_number + 1
                     )))
                 }
@@ -279,6 +286,42 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     extend_or_replace_skills(&mut builtin.skills, config.skills);
     builtin.items = config.items;
     builtin
+}
+
+fn parse_preinstall_section(scope: &str, line_number: usize) -> Result<Section, ForgeError> {
+    let parts = scope.split('.').map(str::trim).collect::<Vec<_>>();
+    match parts.as_slice() {
+        [platform] => {
+            let platform = PreinstallPlatform::parse(platform).ok_or_else(|| {
+                ForgeError::Parse(format!(
+                    "第 {line_number} 行：preinstall 只支持 windows/linux"
+                ))
+            })?;
+            Ok(Section::Preinstall {
+                profile: None,
+                platform,
+            })
+        }
+        [profile, platform] => {
+            if Profile::parse(profile).is_none() {
+                return Err(ForgeError::Parse(format!(
+                    "第 {line_number} 行：未知 preinstall profile：{profile}"
+                )));
+            }
+            let platform = PreinstallPlatform::parse(platform).ok_or_else(|| {
+                ForgeError::Parse(format!(
+                    "第 {line_number} 行：preinstall 只支持 windows/linux"
+                ))
+            })?;
+            Ok(Section::Preinstall {
+                profile: Some((*profile).to_string()),
+                platform,
+            })
+        }
+        _ => Err(ForgeError::Parse(format!(
+            "第 {line_number} 行：preinstall 格式应为 [preinstall.<platform>] 或 [preinstall.<profile>.<platform>]"
+        ))),
+    }
 }
 
 fn extend_or_replace_tools(base: &mut Vec<ToolDef>, incoming: Vec<ToolDef>) {
@@ -520,8 +563,10 @@ fn flush_raw(
 enum Section {
     None,
     Profile(String),
-    PreinstallWindows,
-    PreinstallLinux,
+    Preinstall {
+        profile: Option<String>,
+        platform: PreinstallPlatform,
+    },
     Item,
     Tool,
     Skill,

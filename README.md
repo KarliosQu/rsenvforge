@@ -31,6 +31,7 @@ cargo build --release
 ## 命令
 
 ```text
+rsenvforge init [--force]
 rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup]
 rsenvforge install-skill <source> --agent <claude|opencode|both> [--force]
 rsenvforge install-crate <source> [--norustup] [--force] [--bin <name>]
@@ -42,9 +43,23 @@ rsenvforge help
 rsenvforge version
 ```
 
+## 初始化配置
+
+`init` 会在当前目录生成默认 `rsenvforge.toml`。该文件来自当前版本随二进制内置的默认安装表单，内容与仓库根目录的 [rsenvforge.toml](rsenvforge.toml) 保持一致。
+
+```powershell
+rsenvforge init
+```
+
+如果当前目录已经存在 `rsenvforge.toml`，命令会停止并提示。需要覆盖时使用：
+
+```powershell
+rsenvforge init --force
+```
+
 ## 安装流程
 
-`install` 会先输出工具和 skill 的检测结果。已安装工具会显示版本，未安装工具会列为缺失项。不支持当前平台的工具会直接提示，例如：
+`install` 会先输出代理检查，再输出工具和 skill 的检测结果。已安装工具会显示版本，未安装工具会列为缺失项。不支持当前平台的工具会直接提示，例如：
 
 ```text
 valgrind：不支持windows环境
@@ -64,6 +79,27 @@ valgrind：不支持windows环境
 ```
 
 安装前已经存在的工具也会出现在最终摘要中。
+
+安装命令不会因为耗时较长而被自动停止。单个安装命令持续运行到 `120` 秒时会输出一次提醒，之后按 `240`、`480`、`960` 秒继续翻倍提醒，并显示当前已经收集到的命令行输出：
+
+```text
+目前cargo-geiger的安装已经持续了120秒，请注意，目前进度为：
+...
+```
+
+## 代理检查
+
+`doctor` 和 `install` 都会输出当前代理配置，便于排查 `cargo install`、Git 下载和系统包安装时的网络问题。
+
+检查内容：
+
+- 当前环境变量中的 `http_proxy` / `HTTP_PROXY`。
+- 当前环境变量中的 `https_proxy` / `HTTPS_PROXY`。
+- Windows：环境变量和 Cargo 配置文件。
+- Linux：`~/.bashrc` 和 Cargo 配置文件。
+- Cargo 配置文件优先检查 `$CARGO_HOME/config.toml`，未设置 `CARGO_HOME` 时检查 `~/.cargo/config.toml`，同时兼容旧版 `~/.cargo/config`。
+
+如果代理地址中包含 `user:password@`，输出时会脱敏为 `***@`。
 
 ## 安装等级
 
@@ -138,8 +174,11 @@ tools = ["rust", "cargo-audit", "nodejs"]
 skills = []
 items = []
 
-[preinstall.linux]
-commands = ["sudo apt-get update"]
+[preinstall.standard.linux]
+commands = [
+  "sudo apt-get update",
+  "sudo apt-get install -y pkg-config libssl-dev",
+]
 
 [[tools]]
 name = "nodejs"
@@ -154,7 +193,11 @@ source = "https://github.com/obra/superpowers.git"
 agents = ["claude", "opencode"]
 ```
 
-`[preinstall.linux]` 和 `[preinstall.windows]` 中的命令会在用户确认安装后、安装缺失工具前执行。当前默认配置只在 Linux 下执行一次 `sudo apt-get update`，用于避免每个 apt 工具重复更新软件源。
+`preinstall` 支持全局和分级两种写法。全局写法是 `[preinstall.linux]` / `[preinstall.windows]`，分级写法是 `[preinstall.light.linux]`、`[preinstall.standard.linux]`、`[preinstall.full.linux]`，Windows 同理。
+
+分级预安装命令会按安装等级累进执行：`standard` 会执行 `light + standard`，`full` 会执行 `light + standard + full`。命令只会在用户确认安装后、当前等级存在缺失工具时执行。
+
+当前默认配置把 `sudo apt-get update` 和 `sudo apt-get install -y pkg-config libssl-dev` 放在 `[preinstall.standard.linux]` 中，用于满足 `cargo-geiger` 的 Linux 系统依赖，因此 `light` 安装不会执行这两个命令。
 
 ## 工具配置
 
