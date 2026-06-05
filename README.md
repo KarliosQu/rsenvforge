@@ -10,22 +10,22 @@ rsenvforge install
 
 无参数时使用 `standard` 等级。
 
-## 构建与运行
+## 安装与运行
 
 Windows：
 
 ```powershell
-cargo build --release
-.\target\release\rsenvforge.exe doctor
-.\target\release\rsenvforge.exe install
+cargo install --path .
+rsenvforge doctor
+rsenvforge install
 ```
 
 Linux：
 
 ```bash
-cargo build --release
-./target/release/rsenvforge doctor
-./target/release/rsenvforge install
+cargo install --path .
+rsenvforge doctor
+rsenvforge install
 ```
 
 ## 命令
