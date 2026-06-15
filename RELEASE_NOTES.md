@@ -5,6 +5,7 @@
 ### 新增
 
 - standard 等级新增 `rust-analyzer`、`miri`、`cargo-expand`、`cargo-fuzz`、`rust-lldb`。
+- 新增 `[environment]` 配置，可在安装时初始化 Cargo `config.toml`，并在 rust 安装后补充 Linux `~/.bashrc`。
 
 ## 0.1.2 - 2026-06-05
 

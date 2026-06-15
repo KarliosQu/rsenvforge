@@ -136,9 +136,16 @@ pub struct ProfileDef {
 pub struct InstallConfig {
     pub profiles: BTreeMap<String, ProfileDef>,
     pub preinstall: PreinstallDef,
+    pub environment: EnvironmentDef,
     pub items: Vec<InstallItem>,
     pub tools: Vec<ToolDef>,
     pub skills: Vec<SkillDef>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EnvironmentDef {
+    pub cargo_config: Vec<String>,
+    pub bashrc: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
 use super::constants::{CONFIG_FILE, SKILL_FILE};
 use super::discovery::{discover_crates, discover_skills};
+use super::envfile::{apply_after_rust_install_environment, apply_install_start_environment};
 use super::error::ForgeError;
 use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_file};
 use super::models::{
@@ -23,9 +24,10 @@ use super::util::{
 };
 
 pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeError> {
-    print_proxy_report();
     let loaded = load_config(options.config_path.as_deref())?;
     let config = resolve_config_sources(loaded.config, loaded.path.as_deref());
+    apply_install_start_environment(&config)?;
+    print_proxy_report();
     let preview = preview_install(&config, options.profile)?;
     print_preview(&preview);
 
@@ -71,8 +73,15 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         });
     }
 
+    let rust_missing = preview
+        .tools
+        .iter()
+        .any(|status| status.name == "rust" && status.supported && !status.installed);
     run_preinstall_commands(&config, options.profile, &preview)?;
     install_missing_tools(&config, options.profile, &preview)?;
+    if rust_missing {
+        apply_after_rust_install_environment(&config)?;
+    }
     install_missing_skills(&config, options.profile, &preview, options.force)?;
     let entries = install_legacy_items(&config, options)?;
     let final_preview = preview_install(&config, options.profile)?;

@@ -1,6 +1,7 @@
 mod config;
 mod constants;
 mod discovery;
+mod envfile;
 mod error;
 mod fsutil;
 mod installer;
@@ -62,6 +63,10 @@ mod tests {
             [preinstall.standard.linux]
             commands = ["sudo apt-get install -y pkg-config libssl-dev"]
 
+            [environment]
+            cargo_config = ["[net]", "git-fetch-with-cli = true"]
+            bashrc = [". \"$HOME/.cargo/env\""]
+
             [[tools]]
             name = "python"
             check = "python --version"
@@ -81,6 +86,11 @@ mod tests {
             config.preinstall.standard.linux,
             vec!["sudo apt-get install -y pkg-config libssl-dev"]
         );
+        assert_eq!(
+            config.environment.cargo_config,
+            vec!["[net]", "git-fetch-with-cli = true"]
+        );
+        assert_eq!(config.environment.bashrc, vec![". \"$HOME/.cargo/env\""]);
         assert_eq!(config.tools[0].name, "python");
         assert_eq!(
             config.skills[0].agents,

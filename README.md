@@ -186,6 +186,15 @@ commands = [
   "sudo apt-get install -y pkg-config libssl-dev",
 ]
 
+[environment]
+cargo_config = [
+  "[net]",
+  "git-fetch-with-cli = true",
+]
+bashrc = [
+  ". \"$HOME/.cargo/env\"",
+]
+
 [[tools]]
 name = "nodejs"
 check_windows = "node --version && npm --version"
@@ -206,6 +215,28 @@ agents = ["claude", "opencode"]
 当前默认配置把 `sudo apt-get update` 和 `sudo apt-get install -y pkg-config libssl-dev` 放在 `[preinstall.standard.linux]` 中，用于满足 `cargo-geiger` 的 Linux 系统依赖，因此 `light` 安装不会执行这两个命令。
 
 Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命令前自动去掉 apt 相关命令前的 `sudo`，例如把 `sudo apt-get install -y cmake` 转为 `apt-get install -y cmake`。
+
+## 环境文件
+
+`[environment]` 用于声明安装时要写入的本机环境文件内容：
+
+| 字段 | 说明 |
+| --- | --- |
+| `cargo_config` | 写入 `$CARGO_HOME/config.toml`；未设置 `CARGO_HOME` 时写入 `~/.cargo/config.toml` |
+| `bashrc` | Linux 下 rust 安装完成后追加到 `~/.bashrc` |
+
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。如果检测到用户原本没有安装 `rust`，在 rust 安装完成后会再次确保 Cargo `config.toml` 已写入，并在 Linux 下把 `bashrc` 中缺失的行追加到 `~/.bashrc`。
+
+如果 Cargo `config.toml` 已存在且非空，`rsenvforge` 不会覆盖它；内网 registry、source 或代理配置可以直接写在 `cargo_config` 中，例如用转义引号表达 Cargo 配置行：
+
+```toml
+cargo_config = [
+  "[source.crates-io]",
+  "replace-with = \"internal\"",
+  "[source.internal]",
+  "registry = \"sparse+https://example.internal/crates.io-index/\"",
+]
+```
 
 ## 工具配置
 

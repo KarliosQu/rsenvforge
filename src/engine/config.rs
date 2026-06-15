@@ -6,7 +6,7 @@ use super::constants::{BUILTIN_CONFIG, CONFIG_FILE};
 use super::error::ForgeError;
 use super::fsutil::{read_to_string, write_file};
 use super::models::{
-    Agent, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef,
+    Agent, EnvironmentDef, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef,
     PreinstallPlatform, Profile, ProfileDef, SkillDef, ToolDef,
 };
 use super::paths::{config_dir, manifest_config_path};
@@ -80,6 +80,7 @@ pub fn init_config(force: bool) -> Result<PathBuf, ForgeError> {
 pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
     let mut profiles: BTreeMap<String, ProfileDef> = BTreeMap::new();
     let mut preinstall = PreinstallDef::default();
+    let mut environment = EnvironmentDef::default();
     let mut items = Vec::new();
     let mut tools = Vec::new();
     let mut skills = Vec::new();
@@ -163,6 +164,19 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             continue;
         }
 
+        if line == "[environment]" {
+            flush_raw(
+                &mut current_item,
+                &mut current_tool,
+                &mut current_skill,
+                &mut items,
+                &mut tools,
+                &mut skills,
+            )?;
+            section = Section::Environment;
+            continue;
+        }
+
         let Some((key, value)) = line.split_once('=') else {
             return Err(ForgeError::Parse(format!(
                 "第 {} 行：需要 key = value",
@@ -200,6 +214,16 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 _ => {
                     return Err(ForgeError::Parse(format!(
                         "第 {} 行：preinstall 只支持 commands",
+                        line_number + 1
+                    )))
+                }
+            },
+            Section::Environment => match key {
+                "cargo_config" => environment.cargo_config = parse_string_array(value)?,
+                "bashrc" => environment.bashrc = parse_string_array(value)?,
+                _ => {
+                    return Err(ForgeError::Parse(format!(
+                        "第 {} 行：environment 只支持 cargo_config/bashrc",
                         line_number + 1
                     )))
                 }
@@ -270,6 +294,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
     Ok(InstallConfig {
         profiles,
         preinstall,
+        environment,
         items,
         tools,
         skills,
@@ -282,6 +307,7 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
         builtin.profiles.insert(profile, def);
     }
     builtin.preinstall = config.preinstall;
+    builtin.environment = config.environment;
     extend_or_replace_tools(&mut builtin.tools, config.tools);
     extend_or_replace_skills(&mut builtin.skills, config.skills);
     builtin.items = config.items;
@@ -498,10 +524,35 @@ fn parse_string(value: &str) -> Result<String, ForgeError> {
         .strip_prefix('"')
         .and_then(|value| value.strip_suffix('"'))
     {
-        Ok(stripped.to_string())
+        unescape_string(stripped)
     } else {
         Err(ForgeError::Parse(format!("需要字符串，得到：{value}")))
     }
+}
+
+fn unescape_string(value: &str) -> Result<String, ForgeError> {
+    let mut result = String::new();
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            result.push(ch);
+            continue;
+        }
+        let Some(escaped) = chars.next() else {
+            return Err(ForgeError::Parse("字符串转义缺少后续字符".to_string()));
+        };
+        match escaped {
+            '"' => result.push('"'),
+            '\\' => result.push('\\'),
+            'n' => result.push('\n'),
+            't' => result.push('\t'),
+            _ => {
+                result.push('\\');
+                result.push(escaped);
+            }
+        }
+    }
+    Ok(result)
 }
 
 fn parse_string_array(value: &str) -> Result<Vec<String>, ForgeError> {
@@ -532,7 +583,7 @@ fn normalize_multiline_arrays(input: &str) -> Result<String, ForgeError> {
         if in_array {
             pending.push(' ');
             pending.push_str(line.trim());
-            if line.contains(']') {
+            if array_is_closed(&pending) {
                 output.push_str(&pending);
                 output.push('\n');
                 pending.clear();
@@ -543,7 +594,7 @@ fn normalize_multiline_arrays(input: &str) -> Result<String, ForgeError> {
 
         if let Some((_, value)) = line.split_once('=') {
             let value = value.trim();
-            if value.starts_with('[') && !value.contains(']') {
+            if value.starts_with('[') && !array_is_closed(value) {
                 pending.push_str(line.trim());
                 in_array = true;
                 continue;
@@ -559,6 +610,37 @@ fn normalize_multiline_arrays(input: &str) -> Result<String, ForgeError> {
     }
 
     Ok(output)
+}
+
+fn array_is_closed(value: &str) -> bool {
+    let mut depth = 0;
+    let mut in_quote = false;
+    let mut escaped = false;
+
+    for ch in value.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if in_quote && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_quote = !in_quote;
+            continue;
+        }
+        if in_quote {
+            continue;
+        }
+        match ch {
+            '[' => depth += 1,
+            ']' if depth > 0 => depth -= 1,
+            _ => {}
+        }
+    }
+
+    depth == 0
 }
 
 fn flush_raw(
@@ -589,6 +671,7 @@ enum Section {
         profile: Option<String>,
         platform: PreinstallPlatform,
     },
+    Environment,
     Item,
     Tool,
     Skill,

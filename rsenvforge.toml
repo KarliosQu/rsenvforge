@@ -77,6 +77,15 @@ commands = [
 [preinstall.standard.windows]
 commands = []
 
+[environment]
+cargo_config = [
+  "[net]",
+  "git-fetch-with-cli = true",
+]
+bashrc = [
+  ". \"$HOME/.cargo/env\"",
+]
+
 [[tools]]
 name = "rust"
 check_windows = "rustup --version"
@@ -200,8 +209,8 @@ install_linux = "sudo apt-get install -y nodejs npm"
 name = "cpp2rust-demo"
 check_windows = "cpp2rust-demo --version"
 check_linux = "cpp2rust-demo --version"
-install_windows = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo"
-install_linux = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo"
+install_windows = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo cpp2rust-demo"
+install_linux = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo cpp2rust-demo"
 
 [[tools]]
 name = "c2rust-demo"
