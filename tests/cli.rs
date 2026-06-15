@@ -52,7 +52,7 @@ fn doctor_reports_proxy_settings() {
     fs::create_dir_all(&cargo_home).unwrap();
     fs::write(
         cargo_home.join("config.toml"),
-        "[http]\nproxy = \"http://user:pass@127.0.0.1:7890\"\n",
+        "[http]\nproxy = \"http://user:pass@127.0.0.1:7890\"\n[build]\nrustflags = [\"-C\", \"target-cpu=native\"]\n",
     )
     .unwrap();
 
@@ -72,8 +72,12 @@ fn doctor_reports_proxy_settings() {
     assert!(stdout.contains("代理检查"));
     assert!(stdout.contains("http_proxy：http://127.0.0.1:7890"));
     assert!(stdout.contains("https_proxy：http://127.0.0.1:7891"));
-    assert!(stdout.contains("Cargo config：找到 1 行 proxy 配置"));
+    assert!(stdout.contains("Cargo config："));
+    assert!(stdout.contains("----- begin config.toml -----"));
     assert!(stdout.contains("proxy = \"http://***@127.0.0.1:7890\""));
+    assert!(stdout.contains("[build]"));
+    assert!(stdout.contains("rustflags = [\"-C\", \"target-cpu=native\"]"));
+    assert!(stdout.contains("----- end config.toml -----"));
 
     fs::remove_dir_all(temp).unwrap();
 }

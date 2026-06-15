@@ -98,6 +98,7 @@ valgrind：不支持windows环境
 - Windows：环境变量和 Cargo 配置文件。
 - Linux：`~/.bashrc` 和 Cargo 配置文件。
 - Cargo 配置文件优先检查 `$CARGO_HOME/config.toml`，未设置 `CARGO_HOME` 时检查 `~/.cargo/config.toml`，同时兼容旧版 `~/.cargo/config`。
+- 如果找到 Cargo 配置文件，会直接输出整个文件内容，便于确认 registry、source、net、http 等完整配置。
 
 如果代理地址中包含 `user:password@`，输出时会脱敏为 `***@`。
 

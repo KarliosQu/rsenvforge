@@ -15,7 +15,7 @@ pub fn proxy_report() -> Vec<String> {
     } else {
         lines.extend(bashrc_proxy_lines(&home_dir().join(".bashrc")));
     }
-    lines.extend(cargo_config_proxy_lines());
+    lines.extend(cargo_config_lines());
     lines
 }
 
@@ -64,7 +64,7 @@ fn bashrc_proxy_lines(path: &Path) -> Vec<String> {
     lines
 }
 
-fn cargo_config_proxy_lines() -> Vec<String> {
+fn cargo_config_lines() -> Vec<String> {
     let mut lines = Vec::new();
     let candidates = cargo_config_candidates();
     let Some(path) = candidates.iter().find(|path| path.exists()) else {
@@ -79,21 +79,15 @@ fn cargo_config_proxy_lines() -> Vec<String> {
 
     match fs::read_to_string(path) {
         Ok(contents) => {
-            let matches = proxy_matches(&contents);
-            if matches.is_empty() {
-                lines.push(format!(
-                    "  Cargo config：存在但未找到 proxy 配置（{}）",
-                    path.display()
-                ));
+            lines.push(format!("  Cargo config：{}", path.display()));
+            if contents.trim().is_empty() {
+                lines.push("    （文件为空）".to_string());
             } else {
-                lines.push(format!(
-                    "  Cargo config：找到 {} 行 proxy 配置（{}）",
-                    matches.len(),
-                    path.display()
-                ));
-                for value in matches {
-                    lines.push(format!("    {}", mask_proxy_secrets(&value)));
+                lines.push("    ----- begin config.toml -----".to_string());
+                for line in contents.lines() {
+                    lines.push(format!("    {}", mask_proxy_secrets(line)));
                 }
+                lines.push("    ----- end config.toml -----".to_string());
             }
         }
         Err(error) => lines.push(format!(
