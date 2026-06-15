@@ -96,7 +96,16 @@ mod tests {
         let full = &config.profiles["full"].tools;
         assert!(standard.iter().all(|tool| full.contains(tool)));
         assert!(light.iter().all(|tool| standard.contains(tool)));
-        for tool in ["cpp2rust-demo", "c2rust-demo", "rust-checker"] {
+        for tool in [
+            "cpp2rust-demo",
+            "c2rust-demo",
+            "rust-checker",
+            "rust-analyzer",
+            "miri",
+            "cargo-expand",
+            "cargo-fuzz",
+            "rust-lldb",
+        ] {
             assert!(standard.contains(&tool.to_string()));
             assert!(full.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());

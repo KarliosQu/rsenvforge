@@ -15,6 +15,11 @@ tools = [
   "cargo-audit",
   "cargo-deny",
   "cargo-geiger",
+  "rust-analyzer",
+  "miri",
+  "cargo-expand",
+  "cargo-fuzz",
+  "rust-lldb",
   "cargo-udeps",
   "cargo-bloat",
   "flamegraph-rs",
@@ -36,6 +41,11 @@ tools = [
   "cargo-audit",
   "cargo-deny",
   "cargo-geiger",
+  "rust-analyzer",
+  "miri",
+  "cargo-expand",
+  "cargo-fuzz",
+  "rust-lldb",
   "cargo-udeps",
   "cargo-bloat",
   "flamegraph-rs",
@@ -108,6 +118,41 @@ check_windows = "cargo geiger --version"
 check_linux = "cargo geiger --version"
 install_windows = "cargo install cargo-geiger"
 install_linux = "cargo install cargo-geiger"
+
+[[tools]]
+name = "rust-analyzer"
+check_windows = "rust-analyzer --version"
+check_linux = "rust-analyzer --version"
+install_windows = "rustup component add rust-analyzer"
+install_linux = "rustup component add rust-analyzer"
+
+[[tools]]
+name = "miri"
+check_windows = "cargo +nightly miri --version"
+check_linux = "cargo +nightly miri --version"
+install_windows = "rustup toolchain install nightly && rustup +nightly component add miri"
+install_linux = "rustup toolchain install nightly && rustup +nightly component add miri"
+
+[[tools]]
+name = "cargo-expand"
+check_windows = "cargo expand --version"
+check_linux = "cargo expand --version"
+install_windows = "cargo install cargo-expand"
+install_linux = "cargo install cargo-expand"
+
+[[tools]]
+name = "cargo-fuzz"
+check_windows = "cargo fuzz --version"
+check_linux = "cargo fuzz --version"
+install_windows = "cargo install cargo-fuzz"
+install_linux = "cargo install cargo-fuzz"
+
+[[tools]]
+name = "rust-lldb"
+check_windows = "0"
+check_linux = "rust-lldb --version"
+install_windows = "0"
+install_linux = "rustup component add rustc"
 
 [[tools]]
 name = "cargo-udeps"

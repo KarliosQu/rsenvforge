@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### 新增
+
+- standard 等级新增 `rust-analyzer`、`miri`、`cargo-expand`、`cargo-fuzz`、`rust-lldb`。
+
 ## 0.1.2 - 2026-06-05
 
 本版本增强了初始化、安装前诊断和长时间安装体验。

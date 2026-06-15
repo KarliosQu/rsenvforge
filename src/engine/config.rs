@@ -410,12 +410,34 @@ pub(crate) fn skills_for_names(
 }
 
 pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
+    if name == "rust-lldb" {
+        return Some(ToolDef {
+            name: name.to_string(),
+            check: None,
+            check_windows: Some("0".to_string()),
+            check_linux: Some("rust-lldb --version".to_string()),
+            install: None,
+            install_windows: Some("0".to_string()),
+            install_linux: Some("rustup component add rustc".to_string()),
+        });
+    }
+
     let (check, install) = match name {
         "cargo-llvm-cov" => ("cargo llvm-cov --version", "cargo install cargo-llvm-cov"),
         "bindgen-cli" => ("bindgen --version", "cargo install bindgen-cli"),
         "cargo-audit" => ("cargo audit --version", "cargo install cargo-audit"),
         "cargo-deny" => ("cargo deny --version", "cargo install cargo-deny"),
         "cargo-geiger" => ("cargo geiger --version", "cargo install cargo-geiger"),
+        "rust-analyzer" => (
+            "rust-analyzer --version",
+            "rustup component add rust-analyzer",
+        ),
+        "miri" => (
+            "cargo +nightly miri --version",
+            "rustup toolchain install nightly && rustup +nightly component add miri",
+        ),
+        "cargo-expand" => ("cargo expand --version", "cargo install cargo-expand"),
+        "cargo-fuzz" => ("cargo fuzz --version", "cargo install cargo-fuzz"),
         "cargo-udeps" => ("cargo udeps --version", "cargo install cargo-udeps"),
         "cargo-bloat" => ("cargo bloat --version", "cargo install cargo-bloat"),
         "flamegraph-rs" => ("flamegraph --version", "cargo install flamegraph"),
