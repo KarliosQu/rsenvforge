@@ -222,7 +222,9 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 | `cargo_config` | 写入 `$CARGO_HOME/config.toml`；未设置 `CARGO_HOME` 时写入 `~/.cargo/config.toml` |
 | `bashrc` | Linux 下 rust 安装完成后追加到 `~/.bashrc` |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。如果检测到用户原本没有安装 `rust`，在 rust 安装完成后会再次确保 Cargo `config.toml` 已写入，并在 Linux 下把 `bashrc` 中缺失的行追加到 `~/.bashrc`。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust`，在 rust 安装完成后会再次确保这些环境文件已经写入。
+
+Linux 下安装命令优先使用 `bash -lc` 执行，因此可以在 `preinstall` 中使用 `source ~/.bashrc` 让刚写入的环境变量对后续命令生效；如果系统没有 `bash`，会回退到 `sh -c`，此时应使用 `. ~/.bashrc`。
 
 如果 Cargo `config.toml` 已存在且非空，`rsenvforge` 不会覆盖它；内网 registry、source 或代理配置可以直接写在 `cargo_config` 中，例如用转义引号表达 Cargo 配置行：
 

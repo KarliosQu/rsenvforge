@@ -7,7 +7,11 @@ use super::models::InstallConfig;
 use super::util::home_dir;
 
 pub(crate) fn apply_install_start_environment(config: &InstallConfig) -> Result<(), ForgeError> {
-    write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)
+    write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
+    if cfg!(target_os = "linux") {
+        append_lines_if_missing(&home_dir().join(".bashrc"), &config.environment.bashrc)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn apply_after_rust_install_environment(

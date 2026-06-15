@@ -98,11 +98,23 @@ fn shell_command(command: &str) -> Command {
         let mut cmd = Command::new("cmd");
         cmd.arg("/C").arg(command);
         cmd
+    } else if command_exists("bash") {
+        let mut cmd = Command::new("bash");
+        cmd.arg("-lc").arg(command);
+        cmd
     } else {
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg(command);
         cmd
     }
+}
+
+fn command_exists(command: &str) -> bool {
+    Command::new(command)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 fn command_for_current_user(command: &str) -> String {
