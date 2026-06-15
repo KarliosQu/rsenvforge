@@ -70,6 +70,26 @@ tools = [
 skills = ["openspec", "oh-my-opencode", "superpowers"]
 items = []
 
+# 分级安装前置命令。standard 会继承 light，full 会继承 light + standard。
+# 当前默认依赖由 tools 中的 rust-build-base 安装，这里保留为空作为自定义扩展点。
+[preinstall.light.linux]
+commands = []
+
+[preinstall.light.windows]
+commands = []
+
+[preinstall.standard.linux]
+commands = []
+
+[preinstall.standard.windows]
+commands = []
+
+[preinstall.full.linux]
+commands = []
+
+[preinstall.full.windows]
+commands = []
+
 [environment]
 cargo_config = [
   "[net]",
