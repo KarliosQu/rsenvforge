@@ -204,6 +204,8 @@ agents = ["claude", "opencode"]
 
 当前默认配置把 `sudo apt-get update` 和 `sudo apt-get install -y pkg-config libssl-dev` 放在 `[preinstall.standard.linux]` 中，用于满足 `cargo-geiger` 的 Linux 系统依赖，因此 `light` 安装不会执行这两个命令。
 
+Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命令前自动去掉 apt 相关命令前的 `sudo`，例如把 `sudo apt-get install -y cmake` 转为 `apt-get install -y cmake`。
+
 ## 工具配置
 
 | 字段 | 说明 |

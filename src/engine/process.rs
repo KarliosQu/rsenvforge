@@ -11,12 +11,13 @@ const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
 const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
 
 pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeError> {
-    let mut child = shell_command(command)
+    let command = command_for_current_user(command);
+    let mut child = shell_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|source| ForgeError::Io {
-            path: PathBuf::from(command),
+            path: PathBuf::from(&command),
             source,
         })?;
 
@@ -34,7 +35,7 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeE
     let mut next_notice = FIRST_PROGRESS_NOTICE_SECONDS;
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|source| ForgeError::Io {
-            path: PathBuf::from(command),
+            path: PathBuf::from(&command),
             source,
         })? {
             break status;
@@ -49,8 +50,8 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeE
         thread::sleep(Duration::from_secs(1));
     };
 
-    join_output_thread(stdout_handle, command)?;
-    join_output_thread(stderr_handle, command)?;
+    join_output_thread(stdout_handle, &command)?;
+    join_output_thread(stderr_handle, &command)?;
 
     if status.success() {
         Ok(())
@@ -102,6 +103,35 @@ fn shell_command(command: &str) -> Command {
         cmd.arg("-c").arg(command);
         cmd
     }
+}
+
+fn command_for_current_user(command: &str) -> String {
+    if cfg!(target_os = "linux") && is_linux_root() {
+        strip_sudo_from_apt_commands(command)
+    } else {
+        command.to_string()
+    }
+}
+
+fn is_linux_root() -> bool {
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    Command::new("id")
+        .arg("-u")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim() == "0")
+        .unwrap_or(false)
+}
+
+fn strip_sudo_from_apt_commands(command: &str) -> String {
+    command
+        .replace("sudo apt-get ", "apt-get ")
+        .replace("sudo apt ", "apt ")
+        .replace("sudo -E apt-get ", "apt-get ")
+        .replace("sudo -E apt ", "apt ")
 }
 
 fn collect_command_output<R>(mut reader: R, output: Arc<Mutex<String>>) -> thread::JoinHandle<()>
@@ -168,5 +198,26 @@ pub(crate) fn command_status_text(command: &str) -> &'static str {
         "已找到"
     } else {
         "未找到"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_sudo_from_apt_commands;
+
+    #[test]
+    fn strips_sudo_only_from_apt_commands() {
+        assert_eq!(
+            strip_sudo_from_apt_commands("sudo apt-get update"),
+            "apt-get update"
+        );
+        assert_eq!(
+            strip_sudo_from_apt_commands("cd /tmp && sudo apt install -y cmake"),
+            "cd /tmp && apt install -y cmake"
+        );
+        assert_eq!(
+            strip_sudo_from_apt_commands("sudo systemctl restart demo"),
+            "sudo systemctl restart demo"
+        );
     }
 }
