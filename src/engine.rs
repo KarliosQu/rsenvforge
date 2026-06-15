@@ -106,7 +106,9 @@ mod tests {
         let full = &config.profiles["full"].tools;
         assert!(standard.iter().all(|tool| full.contains(tool)));
         assert!(light.iter().all(|tool| standard.contains(tool)));
+        assert!(light.contains(&"rust-build-base".to_string()));
         for tool in [
+            "rust-build-base",
             "cpp2rust-demo",
             "c2rust-demo",
             "rust-checker",

@@ -436,6 +436,21 @@ pub(crate) fn skills_for_names(
 }
 
 pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
+    if name == "rust-build-base" {
+        return Some(ToolDef {
+            name: name.to_string(),
+            check: None,
+            check_windows: Some("0".to_string()),
+            check_linux: Some("dpkg -s build-essential pkg-config libssl-dev".to_string()),
+            install: None,
+            install_windows: Some("0".to_string()),
+            install_linux: Some(
+                "apt-get update && apt-get install -y build-essential pkg-config libssl-dev"
+                    .to_string(),
+            ),
+        });
+    }
+
     if name == "rust-lldb" {
         return Some(ToolDef {
             name: name.to_string(),

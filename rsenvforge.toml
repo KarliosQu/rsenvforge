@@ -3,12 +3,13 @@
 # 字段值为 "0" 表示该工具不支持对应平台，rsenvforge 会直接提示并跳过检测/安装。
 
 [profiles.light]
-tools = ["rust"]
+tools = ["rust-build-base", "rust"]
 skills = []
 items = []
 
 [profiles.standard]
 tools = [
+  "rust-build-base",
   "rust",
   "cargo-llvm-cov",
   "bindgen-cli",
@@ -35,6 +36,7 @@ items = []
 
 [profiles.full]
 tools = [
+  "rust-build-base",
   "rust",
   "cargo-llvm-cov",
   "bindgen-cli",
@@ -68,15 +70,6 @@ tools = [
 skills = ["openspec", "oh-my-opencode", "superpowers"]
 items = []
 
-[preinstall.standard.linux]
-commands = [
-  "apt-get update",
-  "apt-get install -y pkg-config libssl-dev",
-]
-
-[preinstall.standard.windows]
-commands = []
-
 [environment]
 cargo_config = [
   "[net]",
@@ -85,6 +78,13 @@ cargo_config = [
 bashrc = [
   ". \"$HOME/.cargo/env\"",
 ]
+
+[[tools]]
+name = "rust-build-base"
+check_windows = "0"
+check_linux = "dpkg -s build-essential pkg-config libssl-dev"
+install_windows = "0"
+install_linux = "apt-get update && apt-get install -y build-essential pkg-config libssl-dev"
 
 [[tools]]
 name = "rust"

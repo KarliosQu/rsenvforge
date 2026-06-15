@@ -7,6 +7,7 @@
 - standard 等级新增 `rust-analyzer`、`miri`、`cargo-expand`、`cargo-fuzz`、`rust-lldb`。
 - 新增 `[environment]` 配置，可在安装时初始化 Cargo `config.toml`，并在 rust 安装后补充 Linux `~/.bashrc`。
 - profile 工具安装失败时支持交互式跳过当前工具并继续后续安装。
+- light 等级新增 `rust-build-base`，用于在 Linux 下安装 `build-essential`、`pkg-config`、`libssl-dev`。
 
 ## 0.1.2 - 2026-06-05
 

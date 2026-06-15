@@ -116,6 +116,7 @@ valgrind：不支持windows环境
 
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
+| 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
 | 工具 | `rust` | `rustup toolchain install stable`，并安装 `rustfmt`、`clippy` |
 
 ### standard
@@ -182,12 +183,6 @@ tools = ["rust", "cargo-audit", "nodejs"]
 skills = []
 items = []
 
-[preinstall.standard.linux]
-commands = [
-  "sudo apt-get update",
-  "sudo apt-get install -y pkg-config libssl-dev",
-]
-
 [environment]
 cargo_config = [
   "[net]",
@@ -214,7 +209,7 @@ agents = ["claude", "opencode"]
 
 分级预安装命令会按安装等级累进执行：`standard` 会执行 `light + standard`，`full` 会执行 `light + standard + full`。命令只会在用户确认安装后、当前等级存在缺失工具时执行。
 
-当前默认配置把 `sudo apt-get update` 和 `sudo apt-get install -y pkg-config libssl-dev` 放在 `[preinstall.standard.linux]` 中，用于满足 `cargo-geiger` 的 Linux 系统依赖，因此 `light` 安装不会执行这两个命令。
+当前默认配置把 Linux Rust 构建基础依赖放在 `light` 等级的 `rust-build-base` 工具中，会执行 `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`。`standard` 和 `full` 继承 `light`，因此也会包含这些基础依赖。
 
 Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命令前自动去掉 apt 相关命令前的 `sudo`，例如把 `sudo apt-get install -y cmake` 转为 `apt-get install -y cmake`。
 
