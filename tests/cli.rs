@@ -514,6 +514,55 @@ fn non_installable_tool_stops_with_message() {
 }
 
 #[test]
+fn failed_tool_install_can_be_skipped() {
+    let temp = test_dir("failed_tool_install_can_be_skipped");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["fail-tool", "ok-tool"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["fail-tool", "ok-tool"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = ["fail-tool", "ok-tool"]
+        skills = []
+        items = []
+        [[tools]]
+        name = "fail-tool"
+        check = "definitely-missing-rsenvforge-fail-tool --version"
+        install = "definitely-missing-rsenvforge-fail-tool-install"
+        [[tools]]
+        name = "ok-tool"
+        check = "definitely-missing-rsenvforge-ok-tool --version"
+        install = "echo install-ok-tool"
+        "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\nY\n",
+    );
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("是否跳过该工具继续安装"));
+    assert!(stdout.contains("已跳过工具：fail-tool"));
+    assert!(stdout.contains("开始安装工具：ok-tool"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn missing_agent_skill_dir_skips_skill_install() {
     let temp = test_dir("missing_agent_skill_dir_skips_skill_install");
     let source = temp.join("source");

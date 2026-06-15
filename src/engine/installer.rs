@@ -453,12 +453,32 @@ fn install_missing_tools(
             continue;
         };
         println!("开始安装工具：{}", tool.name);
-        run_shell_labeled(&tool.name, command).map_err(|error| {
-            ForgeError::Command(format!("工具 {} 安装失败：{error}", tool.name))
-        })?;
+        if let Err(error) = run_shell_labeled(&tool.name, command) {
+            println!("工具 {} 安装失败：{error}", tool.name);
+            if confirm_skip_tool(&tool.name)? {
+                println!("已跳过工具：{}", tool.name);
+                continue;
+            }
+            return Err(ForgeError::Command(format!(
+                "工具 {} 安装失败：{error}",
+                tool.name
+            )));
+        }
         println!("工具 {} 安装完成。", tool.name);
     }
     Ok(())
+}
+
+fn confirm_skip_tool(name: &str) -> Result<bool, ForgeError> {
+    println!("工具 {name} 安装失败，是否跳过该工具继续安装？(Y/N)");
+    let mut answer = String::new();
+    io::stdin()
+        .read_line(&mut answer)
+        .map_err(|source| ForgeError::Io {
+            path: PathBuf::from("stdin"),
+            source,
+        })?;
+    Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
 fn run_preinstall_commands(
