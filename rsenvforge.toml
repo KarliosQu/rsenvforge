@@ -20,7 +20,6 @@ tools = [
   "miri",
   "cargo-expand",
   "cargo-fuzz",
-  "rust-lldb",
   "cargo-udeps",
   "cargo-bloat",
   "flamegraph-rs",
@@ -47,7 +46,6 @@ tools = [
   "miri",
   "cargo-expand",
   "cargo-fuzz",
-  "rust-lldb",
   "cargo-udeps",
   "cargo-bloat",
   "flamegraph-rs",
@@ -175,13 +173,6 @@ check_windows = "cargo fuzz --version"
 check_linux = "cargo fuzz --version"
 install_windows = "cargo install cargo-fuzz"
 install_linux = "cargo install cargo-fuzz"
-
-[[tools]]
-name = "rust-lldb"
-check_windows = "0"
-check_linux = "rust-lldb --version"
-install_windows = "0"
-install_linux = "rustup component add rustc"
 
 [[tools]]
 name = "cargo-udeps"

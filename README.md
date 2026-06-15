@@ -133,7 +133,6 @@ valgrind：不支持windows环境
 | 工具 | `miri` | `rustup toolchain install nightly && rustup +nightly component add miri` |
 | 工具 | `cargo-expand` | `cargo install cargo-expand` |
 | 工具 | `cargo-fuzz` | `cargo install cargo-fuzz` |
-| 工具 | `rust-lldb` | Windows: 不支持；Linux: `rustup component add rustc` |
 | 工具 | `cargo-udeps` | `cargo install cargo-udeps` |
 | 工具 | `cargo-bloat` | `cargo install cargo-bloat` |
 | 工具 | `flamegraph-rs` | `cargo install flamegraph` |

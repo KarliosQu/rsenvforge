@@ -116,7 +116,6 @@ mod tests {
             "miri",
             "cargo-expand",
             "cargo-fuzz",
-            "rust-lldb",
         ] {
             assert!(standard.contains(&tool.to_string()));
             assert!(full.contains(&tool.to_string()));

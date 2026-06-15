@@ -451,18 +451,6 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
         });
     }
 
-    if name == "rust-lldb" {
-        return Some(ToolDef {
-            name: name.to_string(),
-            check: None,
-            check_windows: Some("0".to_string()),
-            check_linux: Some("rust-lldb --version".to_string()),
-            install: None,
-            install_windows: Some("0".to_string()),
-            install_linux: Some("rustup component add rustc".to_string()),
-        });
-    }
-
     let (check, install) = match name {
         "cargo-llvm-cov" => ("cargo llvm-cov --version", "cargo install cargo-llvm-cov"),
         "bindgen-cli" => ("bindgen --version", "cargo install bindgen-cli"),
