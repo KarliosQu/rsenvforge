@@ -94,6 +94,9 @@ pub struct ToolDef {
     pub install: Option<String>,
     pub install_windows: Option<String>,
     pub install_linux: Option<String>,
+    pub post_install: Option<String>,
+    pub post_install_windows: Option<String>,
+    pub post_install_linux: Option<String>,
 }
 
 impl ToolDef {
@@ -110,6 +113,18 @@ impl ToolDef {
             self.install_windows.as_deref().or(self.install.as_deref())
         } else {
             self.install_linux.as_deref().or(self.install.as_deref())
+        }
+    }
+
+    pub(crate) fn post_install_command(&self) -> Option<&str> {
+        if cfg!(windows) {
+            self.post_install_windows
+                .as_deref()
+                .or(self.post_install.as_deref())
+        } else {
+            self.post_install_linux
+                .as_deref()
+                .or(self.post_install.as_deref())
         }
     }
 

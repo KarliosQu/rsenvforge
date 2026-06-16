@@ -464,6 +464,23 @@ fn install_missing_tools(
                 tool.name
             )));
         }
+        if let Some(post_command) = tool.post_install_command() {
+            println!("开始运行工具安装后命令：{}", tool.name);
+            if let Err(error) =
+                run_shell_labeled(&format!("{} 安装后命令", tool.name), post_command)
+            {
+                println!("工具 {} 安装后命令失败：{error}", tool.name);
+                if confirm_skip_tool(&tool.name)? {
+                    println!("已跳过工具安装后命令：{}", tool.name);
+                    continue;
+                }
+                return Err(ForgeError::Command(format!(
+                    "工具 {} 安装后命令失败：{error}",
+                    tool.name
+                )));
+            }
+            println!("工具 {} 安装后命令完成。", tool.name);
+        }
         println!("工具 {} 安装完成。", tool.name);
     }
     Ok(())

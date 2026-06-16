@@ -197,6 +197,7 @@ check_windows = "node --version && npm --version"
 check_linux = "node --version && npm --version"
 install_windows = "winget install OpenJS.NodeJS.LTS"
 install_linux = "sudo apt-get install -y nodejs npm"
+post_install_linux = "node --version && npm --version"
 
 [[skills]]
 name = "superpowers"
@@ -245,8 +246,13 @@ cargo_config = [
 | `check_linux` | Linux 专用检测命令 |
 | `install_windows` | Windows 专用安装命令 |
 | `install_linux` | Linux 专用安装命令 |
+| `post_install` | 工具主安装命令成功后的通用后置命令 |
+| `post_install_windows` | Windows 专用安装后命令 |
+| `post_install_linux` | Linux 专用安装后命令 |
 
 `check_windows/check_linux/install_windows/install_linux` 可以填写 `"0"`，表示该工具不支持对应平台。当前平台遇到 `"0"` 时，`rsenvforge` 不会执行检测或安装命令。
+
+`post_install*` 会在对应工具的 `install*` 命令成功后立即运行，适合安装完成后才能使用的新命令，例如 node.js 安装完成后运行 npm 相关命令。后置命令失败时，工具会询问是否跳过当前工具继续安装。
 
 ## Skill 安装
 

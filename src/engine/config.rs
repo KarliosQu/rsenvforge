@@ -253,6 +253,11 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     "install" => tool.install = Some(parse_string(value)?),
                     "install_windows" => tool.install_windows = Some(parse_string(value)?),
                     "install_linux" => tool.install_linux = Some(parse_string(value)?),
+                    "post_install" => tool.post_install = Some(parse_string(value)?),
+                    "post_install_windows" => {
+                        tool.post_install_windows = Some(parse_string(value)?)
+                    }
+                    "post_install_linux" => tool.post_install_linux = Some(parse_string(value)?),
                     _ => return Err(ForgeError::Parse(format!("未知 tool 字段：{key}"))),
                 }
             }
@@ -408,6 +413,9 @@ pub(crate) fn tools_for_names(
                 install: None,
                 install_windows: None,
                 install_linux: None,
+                post_install: None,
+                post_install_windows: None,
+                post_install_linux: None,
             });
         }
     }
@@ -448,6 +456,9 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
                 "apt-get update && apt-get install -y build-essential pkg-config libssl-dev"
                     .to_string(),
             ),
+            post_install: None,
+            post_install_windows: None,
+            post_install_linux: None,
         });
     }
 
@@ -506,6 +517,9 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
         install: Some(install.to_string()),
         install_windows: None,
         install_linux: None,
+        post_install: None,
+        post_install_windows: None,
+        post_install_linux: None,
     })
 }
 
@@ -718,6 +732,9 @@ struct RawTool {
     install: Option<String>,
     install_windows: Option<String>,
     install_linux: Option<String>,
+    post_install: Option<String>,
+    post_install_windows: Option<String>,
+    post_install_linux: Option<String>,
 }
 
 impl RawTool {
@@ -730,6 +747,9 @@ impl RawTool {
             install: self.install,
             install_windows: self.install_windows,
             install_linux: self.install_linux,
+            post_install: self.post_install,
+            post_install_windows: self.post_install_windows,
+            post_install_linux: self.post_install_linux,
         })
     }
 }
