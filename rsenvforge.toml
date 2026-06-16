@@ -25,6 +25,7 @@ tools = [
   "flamegraph-rs",
   "cargo-msrv",
   "cargo-semver-checks",
+  "nvm",
   "nodejs",
   "cpp2rust-demo",
   "c2rust-demo",
@@ -51,6 +52,7 @@ tools = [
   "flamegraph-rs",
   "cargo-msrv",
   "cargo-semver-checks",
+  "nvm",
   "nodejs",
   "cpp2rust-demo",
   "c2rust-demo",
@@ -210,11 +212,18 @@ install_windows = "cargo install cargo-semver-checks"
 install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
+name = "nvm"
+check_windows = "nvm version"
+check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version"
+install_windows = "winget install -e --id CoreyButler.NVMforWindows"
+install_linux = "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash"
+
+[[tools]]
 name = "nodejs"
-check_windows = "node --version && npm --version"
-check_linux = "node --version && npm --version"
-install_windows = "winget install OpenJS.NodeJS.LTS"
-install_linux = "apt-get install -y nodejs npm"
+check_windows = "node --version | findstr /C:\"v20.17.\" && npm --version"
+check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm current | grep '^v20\\.17\\.' && node --version && npm --version"
+install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
+install_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0"
 
 [[tools]]
 name = "cpp2rust-demo"

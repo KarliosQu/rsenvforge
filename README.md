@@ -138,7 +138,8 @@ valgrind：不支持windows环境
 | 工具 | `flamegraph-rs` | `cargo install flamegraph` |
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
-| 工具 | `nodejs` | Windows: `winget install OpenJS.NodeJS.LTS`；Linux: `sudo apt-get install -y nodejs npm` |
+| 工具 | `nvm` | Windows: `winget install -e --id CoreyButler.NVMforWindows`；Linux: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| bash` |
+| 工具 | `nodejs` | 通过 `nvm install 20.17.0` 安装并启用 Node.js 20.17 |
 | 工具 | `cpp2rust-demo` | `cargo install --git https://github.com/LuuuXXX/cpp2rust-demo` |
 | 工具 | `c2rust-demo` | `cargo install --git https://github.com/LuuuXXX/c2rust-demo` |
 | 工具 | `rust-checker` | `cargo install --git https://github.com/LuuuXXX/rust-checker` |
@@ -178,7 +179,7 @@ valgrind：不支持windows环境
 
 ```toml
 [profiles.standard]
-tools = ["rust", "cargo-audit", "nodejs"]
+tools = ["rust", "cargo-audit", "nvm", "nodejs"]
 skills = []
 items = []
 
@@ -192,11 +193,18 @@ bashrc = [
 ]
 
 [[tools]]
+name = "nvm"
+check_windows = "nvm version"
+check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version"
+install_windows = "winget install -e --id CoreyButler.NVMforWindows"
+install_linux = "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash"
+
+[[tools]]
 name = "nodejs"
-check_windows = "node --version && npm --version"
-check_linux = "node --version && npm --version"
-install_windows = "winget install OpenJS.NodeJS.LTS"
-install_linux = "sudo apt-get install -y nodejs npm"
+check_windows = "node --version | findstr /C:\"v20.17.\" && npm --version"
+check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm current | grep '^v20\\.17\\.' && node --version && npm --version"
+install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
+install_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0"
 post_install_linux = "node --version && npm --version"
 
 [[skills]]
