@@ -252,7 +252,7 @@ cargo_config = [
 
 `check_windows/check_linux/install_windows/install_linux` 可以填写 `"0"`，表示该工具不支持对应平台。当前平台遇到 `"0"` 时，`rsenvforge` 不会执行检测或安装命令。
 
-`post_install*` 会在对应工具的 `install*` 命令成功后立即运行，适合安装完成后才能使用的新命令，例如 node.js 安装完成后运行 npm 相关命令。后置命令失败时，工具会询问是否跳过当前工具继续安装。
+`post_install*` 会在对应工具的 `install*` 命令成功后立即运行，适合安装完成后才能使用的新命令，例如 node.js 安装完成后运行 npm 相关命令。如果工具在本次安装前已经存在，且配置了 `post_install*`，`rsenvforge` 会先询问是否运行该后置命令，得到 `Y` 或 `y` 后才会执行。后置命令失败时，工具会询问是否跳过当前工具继续安装。
 
 ## Skill 安装
 

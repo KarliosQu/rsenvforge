@@ -610,6 +610,101 @@ fn tool_post_install_runs_after_install() {
 }
 
 #[test]
+fn installed_tool_post_install_runs_after_confirmation() {
+    let temp = test_dir("installed_tool_post_install_runs_after_confirmation");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    let marker = temp.join("installed-post-marker.txt");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+            [profiles.light]
+            tools = ["installed-post-demo"]
+            skills = []
+            items = []
+            [profiles.standard]
+            tools = ["installed-post-demo"]
+            skills = []
+            items = []
+            [profiles.full]
+            tools = ["installed-post-demo"]
+            skills = []
+            items = []
+            [[tools]]
+            name = "installed-post-demo"
+            check = "echo installed-post-demo 1.0.0"
+            install = "echo install-installed-post-demo"
+            post_install = "echo installed-post-demo > installed-post-marker.txt"
+            "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .current_dir(&temp)
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\n",
+    );
+
+    assert_success(&output);
+    assert!(marker.is_file());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("已安装且配置了安装后命令，是否运行该命令"));
+    assert!(stdout.contains("开始运行工具安装后命令：installed-post-demo"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn installed_tool_post_install_can_be_declined() {
+    let temp = test_dir("installed_tool_post_install_can_be_declined");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    let marker = temp.join("installed-post-marker.txt");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+            [profiles.light]
+            tools = ["installed-post-demo"]
+            skills = []
+            items = []
+            [profiles.standard]
+            tools = ["installed-post-demo"]
+            skills = []
+            items = []
+            [profiles.full]
+            tools = ["installed-post-demo"]
+            skills = []
+            items = []
+            [[tools]]
+            name = "installed-post-demo"
+            check = "echo installed-post-demo 1.0.0"
+            install = "echo install-installed-post-demo"
+            post_install = "echo installed-post-demo > installed-post-marker.txt"
+            "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .current_dir(&temp)
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "N\n",
+    );
+
+    assert_success(&output);
+    assert!(!marker.exists());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("已跳过工具安装后命令：installed-post-demo"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn missing_agent_skill_dir_skips_skill_install() {
     let temp = test_dir("missing_agent_skill_dir_skips_skill_install");
     let source = temp.join("source");

@@ -35,6 +35,7 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
     let missing_skills = preview.missing_skills();
     if missing_tools.is_empty() && missing_skills.is_empty() {
         println!("所有工具和 skill 均已安装。");
+        process_profile_tools(&config, options.profile, &preview)?;
         let entries = install_legacy_items(&config, options)?;
         let final_preview = preview_install(&config, options.profile)?;
         print_install_complete(&final_preview);
@@ -78,7 +79,7 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         .iter()
         .any(|status| status.name == "rust" && status.supported && !status.installed);
     run_preinstall_commands(&config, options.profile, &preview)?;
-    install_missing_tools(&config, options.profile, &preview)?;
+    process_profile_tools(&config, options.profile, &preview)?;
     if rust_missing {
         apply_after_rust_install_environment(&config)?;
     }
@@ -426,7 +427,7 @@ fn confirm_install() -> Result<bool, ForgeError> {
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
-fn install_missing_tools(
+fn process_profile_tools(
     config: &InstallConfig,
     profile: Profile,
     preview: &InstallPreview,
@@ -437,53 +438,87 @@ fn install_missing_tools(
         .filter(|status| status.installable)
         .map(|status| status.name.as_str())
         .collect();
-    if missing_names.is_empty() {
-        return Ok(());
-    }
+    let installed_names: BTreeSet<&str> = preview
+        .tools
+        .iter()
+        .filter(|status| status.supported && status.installed)
+        .map(|status| status.name.as_str())
+        .collect();
     let profile_def = config
         .profiles
         .get(profile.as_str())
         .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
     let tools = tools_for_names(config, &profile_def.tools)?;
     for tool in tools {
-        if !missing_names.contains(tool.name.as_str()) {
+        if missing_names.contains(tool.name.as_str()) {
+            install_tool(&tool)?;
             continue;
         }
-        let Some(command) = tool.install_command() else {
+
+        if !installed_names.contains(tool.name.as_str()) || tool.post_install_command().is_none() {
             continue;
-        };
-        println!("开始安装工具：{}", tool.name);
-        if let Err(error) = run_shell_labeled(&tool.name, command) {
-            println!("工具 {} 安装失败：{error}", tool.name);
-            if confirm_skip_tool(&tool.name)? {
-                println!("已跳过工具：{}", tool.name);
-                continue;
-            }
-            return Err(ForgeError::Command(format!(
-                "工具 {} 安装失败：{error}",
-                tool.name
-            )));
         }
-        if let Some(post_command) = tool.post_install_command() {
-            println!("开始运行工具安装后命令：{}", tool.name);
-            if let Err(error) =
-                run_shell_labeled(&format!("{} 安装后命令", tool.name), post_command)
-            {
-                println!("工具 {} 安装后命令失败：{error}", tool.name);
-                if confirm_skip_tool(&tool.name)? {
-                    println!("已跳过工具安装后命令：{}", tool.name);
-                    continue;
-                }
-                return Err(ForgeError::Command(format!(
-                    "工具 {} 安装后命令失败：{error}",
-                    tool.name
-                )));
-            }
-            println!("工具 {} 安装后命令完成。", tool.name);
+
+        if confirm_run_installed_tool_post(&tool.name)? {
+            run_tool_post_install(&tool)?;
+        } else {
+            println!("已跳过工具安装后命令：{}", tool.name);
         }
-        println!("工具 {} 安装完成。", tool.name);
     }
     Ok(())
+}
+
+fn install_tool(tool: &ToolDef) -> Result<(), ForgeError> {
+    let Some(command) = tool.install_command() else {
+        return Ok(());
+    };
+    println!("开始安装工具：{}", tool.name);
+    if let Err(error) = run_shell_labeled(&tool.name, command) {
+        println!("工具 {} 安装失败：{error}", tool.name);
+        if confirm_skip_tool(&tool.name)? {
+            println!("已跳过工具：{}", tool.name);
+            return Ok(());
+        }
+        return Err(ForgeError::Command(format!(
+            "工具 {} 安装失败：{error}",
+            tool.name
+        )));
+    }
+    run_tool_post_install(tool)?;
+    println!("工具 {} 安装完成。", tool.name);
+    Ok(())
+}
+
+fn run_tool_post_install(tool: &ToolDef) -> Result<(), ForgeError> {
+    let Some(post_command) = tool.post_install_command() else {
+        return Ok(());
+    };
+    println!("开始运行工具安装后命令：{}", tool.name);
+    if let Err(error) = run_shell_labeled(&format!("{} 安装后命令", tool.name), post_command) {
+        println!("工具 {} 安装后命令失败：{error}", tool.name);
+        if confirm_skip_tool(&tool.name)? {
+            println!("已跳过工具安装后命令：{}", tool.name);
+            return Ok(());
+        }
+        return Err(ForgeError::Command(format!(
+            "工具 {} 安装后命令失败：{error}",
+            tool.name
+        )));
+    }
+    println!("工具 {} 安装后命令完成。", tool.name);
+    Ok(())
+}
+
+fn confirm_run_installed_tool_post(name: &str) -> Result<bool, ForgeError> {
+    println!("工具 {name} 已安装且配置了安装后命令，是否运行该命令？(Y/N)");
+    let mut answer = String::new();
+    io::stdin()
+        .read_line(&mut answer)
+        .map_err(|source| ForgeError::Io {
+            path: PathBuf::from("stdin"),
+            source,
+        })?;
+    Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
 fn confirm_skip_tool(name: &str) -> Result<bool, ForgeError> {
