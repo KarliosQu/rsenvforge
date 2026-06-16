@@ -138,7 +138,7 @@ valgrind：不支持windows环境
 | 工具 | `flamegraph-rs` | `cargo install flamegraph` |
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
-| 工具 | `nvm` | Windows: `winget install -e --id CoreyButler.NVMforWindows`；Linux: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| bash` |
+| 工具 | `nvm` | Windows: `winget install -e --id CoreyButler.NVMforWindows`；Linux: `set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| PROFILE="$HOME/.bashrc" bash` |
 | 工具 | `nodejs` | 通过 `nvm install 20.17.0` 安装并启用 Node.js 20.17 |
 | 工具 | `cpp2rust-demo` | `cargo install --git https://github.com/LuuuXXX/cpp2rust-demo` |
 | 工具 | `c2rust-demo` | `cargo install --git https://github.com/LuuuXXX/c2rust-demo` |
@@ -197,7 +197,7 @@ name = "nvm"
 check_windows = "nvm version"
 check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version"
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
-install_linux = "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash"
+install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
 
 [[tools]]
 name = "nodejs"

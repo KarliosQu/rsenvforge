@@ -216,7 +216,7 @@ name = "nvm"
 check_windows = "nvm version"
 check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version"
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
-install_linux = "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash"
+install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
 
 [[tools]]
 name = "nodejs"
