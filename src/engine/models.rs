@@ -88,6 +88,7 @@ pub struct InstallItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolDef {
     pub name: String,
+    pub tags: Vec<String>,
     pub check: Option<String>,
     pub check_windows: Option<String>,
     pub check_linux: Option<String>,
@@ -133,6 +134,27 @@ impl ToolDef {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TagCheckDef {
+    pub check: Option<String>,
+    pub check_windows: Option<String>,
+    pub check_linux: Option<String>,
+}
+
+impl TagCheckDef {
+    pub(crate) fn check_command(&self) -> Option<&str> {
+        if cfg!(windows) {
+            self.check_windows.as_deref().or(self.check.as_deref())
+        } else {
+            self.check_linux.as_deref().or(self.check.as_deref())
+        }
+    }
+
+    pub(crate) fn supports_current_platform(&self) -> bool {
+        !matches!(self.check_command(), Some("0"))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillDef {
     pub name: String,
@@ -152,6 +174,7 @@ pub struct InstallConfig {
     pub profiles: BTreeMap<String, ProfileDef>,
     pub preinstall: PreinstallDef,
     pub environment: EnvironmentDef,
+    pub tag_checks: BTreeMap<String, TagCheckDef>,
     pub items: Vec<InstallItem>,
     pub tools: Vec<ToolDef>,
     pub skills: Vec<SkillDef>,

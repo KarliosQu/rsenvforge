@@ -24,7 +24,8 @@ fn init_creates_default_config() {
     assert_eq!(text, expected);
     assert!(text.contains("[profiles.standard]"));
     assert!(text.contains("nodejs"));
-    assert!(text.contains("openspec"));
+    assert!(text.contains("cargo-llvm-cov"));
+    assert!(!text.contains("openspec"));
 
     let second = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
         .current_dir(&temp)
@@ -558,6 +559,110 @@ fn failed_tool_install_can_be_skipped() {
     assert!(stdout.contains("是否跳过该工具继续安装"));
     assert!(stdout.contains("已跳过工具：fail-tool"));
     assert!(stdout.contains("开始安装工具：ok-tool"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn failed_tag_check_can_skip_tool_before_install() {
+    let temp = test_dir("failed_tag_check_can_skip_tool_before_install");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["tagged-tool", "ok-tool"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["tagged-tool", "ok-tool"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = ["tagged-tool", "ok-tool"]
+        skills = []
+        items = []
+        [tag_checks.proxy]
+        check = "definitely-missing-rsenvforge-proxy-check"
+        [[tools]]
+        name = "tagged-tool"
+        tags = ["proxy"]
+        check = "definitely-missing-rsenvforge-tagged-tool --version"
+        install = "echo install-tagged-tool"
+        [[tools]]
+        name = "ok-tool"
+        check = "definitely-missing-rsenvforge-ok-tool --version"
+        install = "echo install-ok-tool"
+        "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\nY\n",
+    );
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("标签检查 proxy 未通过"));
+    assert!(stdout.contains("安装前检查未通过，是否跳过该工具继续安装"));
+    assert!(stdout.contains("已跳过工具：tagged-tool"));
+    assert!(!stdout.contains("开始安装工具：tagged-tool"));
+    assert!(stdout.contains("开始安装工具：ok-tool"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn unsupported_windows_tag_check_can_skip_tool() {
+    let temp = test_dir("unsupported_windows_tag_check_can_skip_tool");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["apt-dependent"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["apt-dependent"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = []
+        skills = []
+        items = []
+        [tag_checks.apt-mirror]
+        check_windows = "0"
+        check_linux = "true"
+        [[tools]]
+        name = "apt-dependent"
+        tags = ["apt-mirror"]
+        check = "definitely-missing-rsenvforge-apt-dependent --version"
+        install = "echo install-apt-dependent"
+        "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\nY\n",
+    );
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("标签 apt-mirror 不支持当前平台测试"));
+    assert!(stdout.contains("已跳过工具：apt-dependent"));
+    assert!(!stdout.contains("开始安装工具：apt-dependent"));
 
     fs::remove_dir_all(temp).unwrap();
 }

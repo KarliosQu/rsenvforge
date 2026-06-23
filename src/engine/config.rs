@@ -7,7 +7,7 @@ use super::error::ForgeError;
 use super::fsutil::{read_to_string, write_file};
 use super::models::{
     Agent, EnvironmentDef, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef,
-    PreinstallPlatform, Profile, ProfileDef, SkillDef, ToolDef,
+    PreinstallPlatform, Profile, ProfileDef, SkillDef, TagCheckDef, ToolDef,
 };
 use super::paths::{config_dir, manifest_config_path};
 use super::util::resolve_source;
@@ -81,6 +81,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
     let mut profiles: BTreeMap<String, ProfileDef> = BTreeMap::new();
     let mut preinstall = PreinstallDef::default();
     let mut environment = EnvironmentDef::default();
+    let mut tag_checks: BTreeMap<String, TagCheckDef> = BTreeMap::new();
     let mut items = Vec::new();
     let mut tools = Vec::new();
     let mut skills = Vec::new();
@@ -164,6 +165,31 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             continue;
         }
 
+        if line.starts_with("[tag_checks.") && line.ends_with(']') {
+            flush_raw(
+                &mut current_item,
+                &mut current_tool,
+                &mut current_skill,
+                &mut items,
+                &mut tools,
+                &mut skills,
+            )?;
+            let tag = line
+                .trim_start_matches("[tag_checks.")
+                .trim_end_matches(']')
+                .trim()
+                .to_string();
+            if tag.is_empty() {
+                return Err(ForgeError::Parse(format!(
+                    "第 {} 行：tag_checks 名称不能为空",
+                    line_number + 1
+                )));
+            }
+            tag_checks.entry(tag.clone()).or_default();
+            section = Section::TagCheck(tag);
+            continue;
+        }
+
         if line == "[environment]" {
             flush_raw(
                 &mut current_item,
@@ -228,6 +254,20 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     )))
                 }
             },
+            Section::TagCheck(tag) => {
+                let tag_check = tag_checks.entry(tag.clone()).or_default();
+                match key {
+                    "check" => tag_check.check = Some(parse_string(value)?),
+                    "check_windows" => tag_check.check_windows = Some(parse_string(value)?),
+                    "check_linux" => tag_check.check_linux = Some(parse_string(value)?),
+                    _ => {
+                        return Err(ForgeError::Parse(format!(
+                            "第 {} 行：tag_checks 只支持 check/check_windows/check_linux",
+                            line_number + 1
+                        )))
+                    }
+                }
+            }
             Section::Item => {
                 let Some(item) = current_item.as_mut() else {
                     return Err(ForgeError::Parse("item 字段不在 [[items]] 中".to_string()));
@@ -247,6 +287,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 };
                 match key {
                     "name" => tool.name = Some(parse_string(value)?),
+                    "tags" => tool.tags = parse_string_array(value)?,
                     "check" => tool.check = Some(parse_string(value)?),
                     "check_windows" => tool.check_windows = Some(parse_string(value)?),
                     "check_linux" => tool.check_linux = Some(parse_string(value)?),
@@ -300,6 +341,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
         profiles,
         preinstall,
         environment,
+        tag_checks,
         items,
         tools,
         skills,
@@ -313,6 +355,9 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     }
     builtin.preinstall = config.preinstall;
     builtin.environment = config.environment;
+    for (tag, check) in config.tag_checks {
+        builtin.tag_checks.insert(tag, check);
+    }
     extend_or_replace_tools(&mut builtin.tools, config.tools);
     extend_or_replace_skills(&mut builtin.skills, config.skills);
     builtin.items = config.items;
@@ -407,6 +452,7 @@ pub(crate) fn tools_for_names(
         } else {
             tools.push(ToolDef {
                 name: name.clone(),
+                tags: Vec::new(),
                 check: Some(format!("{name} --version")),
                 check_windows: None,
                 check_linux: None,
@@ -447,6 +493,7 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
     if name == "rust-build-base" {
         return Some(ToolDef {
             name: name.to_string(),
+            tags: Vec::new(),
             check: None,
             check_windows: Some("0".to_string()),
             check_linux: Some("dpkg -s build-essential pkg-config libssl-dev".to_string()),
@@ -511,6 +558,7 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
 
     Some(ToolDef {
         name: name.to_string(),
+        tags: Vec::new(),
         check: Some(check.to_string()),
         check_windows: None,
         check_linux: None,
@@ -689,6 +737,7 @@ enum Section {
         platform: PreinstallPlatform,
     },
     Environment,
+    TagCheck(String),
     Item,
     Tool,
     Skill,
@@ -726,6 +775,7 @@ impl RawItem {
 #[derive(Debug, Default)]
 struct RawTool {
     name: Option<String>,
+    tags: Vec<String>,
     check: Option<String>,
     check_windows: Option<String>,
     check_linux: Option<String>,
@@ -741,6 +791,7 @@ impl RawTool {
     fn into_tool(self) -> Result<ToolDef, ForgeError> {
         Ok(ToolDef {
             name: required(self.name, "tool.name")?,
+            tags: self.tags,
             check: self.check,
             check_windows: self.check_windows,
             check_linux: self.check_linux,

@@ -449,9 +449,10 @@ fn process_profile_tools(
         .get(profile.as_str())
         .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
     let tools = tools_for_names(config, &profile_def.tools)?;
+    let mut passed_tags = BTreeSet::new();
     for tool in tools {
         if missing_names.contains(tool.name.as_str()) {
-            install_tool(&tool)?;
+            install_tool(config, &tool, &mut passed_tags)?;
             continue;
         }
 
@@ -468,10 +469,18 @@ fn process_profile_tools(
     Ok(())
 }
 
-fn install_tool(tool: &ToolDef) -> Result<(), ForgeError> {
+fn install_tool(
+    config: &InstallConfig,
+    tool: &ToolDef,
+    passed_tags: &mut BTreeSet<String>,
+) -> Result<(), ForgeError> {
     let Some(command) = tool.install_command() else {
         return Ok(());
     };
+    if !run_tool_tag_checks(config, tool, passed_tags)? {
+        println!("已跳过工具：{}", tool.name);
+        return Ok(());
+    }
     println!("开始安装工具：{}", tool.name);
     if let Err(error) = run_shell_labeled(&tool.name, command) {
         println!("工具 {} 安装失败：{error}", tool.name);
@@ -487,6 +496,72 @@ fn install_tool(tool: &ToolDef) -> Result<(), ForgeError> {
     run_tool_post_install(tool)?;
     println!("工具 {} 安装完成。", tool.name);
     Ok(())
+}
+
+fn run_tool_tag_checks(
+    config: &InstallConfig,
+    tool: &ToolDef,
+    passed_tags: &mut BTreeSet<String>,
+) -> Result<bool, ForgeError> {
+    for tag in &tool.tags {
+        if passed_tags.contains(tag) {
+            continue;
+        }
+        let Some(tag_check) = config.tag_checks.get(tag) else {
+            println!("工具 {} 的标签 {} 未配置测试指令。", tool.name, tag);
+            if confirm_skip_tool_tag_check(&tool.name)? {
+                return Ok(false);
+            }
+            return Err(ForgeError::Config(format!(
+                "工具 {} 的标签 {} 未配置测试指令",
+                tool.name, tag
+            )));
+        };
+        let Some(command) = tag_check.check_command() else {
+            println!("工具 {} 的标签 {} 不支持当前平台测试。", tool.name, tag);
+            if confirm_skip_tool_tag_check(&tool.name)? {
+                return Ok(false);
+            }
+            return Err(ForgeError::Config(format!(
+                "工具 {} 的标签 {} 不支持当前平台测试",
+                tool.name, tag
+            )));
+        };
+        if !tag_check.supports_current_platform() {
+            println!("工具 {} 的标签 {} 不支持当前平台测试。", tool.name, tag);
+            if confirm_skip_tool_tag_check(&tool.name)? {
+                return Ok(false);
+            }
+            return Err(ForgeError::Config(format!(
+                "工具 {} 的标签 {} 不支持当前平台测试",
+                tool.name, tag
+            )));
+        }
+
+        println!("执行工具 {} 的标签检查：{}", tool.name, tag);
+        match run_shell_capture(command) {
+            Ok(output) => {
+                let version = first_line(output);
+                if version.trim().is_empty() {
+                    println!("标签检查通过：{}", tag);
+                } else {
+                    println!("标签检查通过：{}（{}）", tag, version);
+                }
+                passed_tags.insert(tag.clone());
+            }
+            Err(error) => {
+                println!("工具 {} 的标签检查 {} 未通过：{error}", tool.name, tag);
+                if confirm_skip_tool_tag_check(&tool.name)? {
+                    return Ok(false);
+                }
+                return Err(ForgeError::Command(format!(
+                    "工具 {} 的标签检查 {} 未通过：{error}",
+                    tool.name, tag
+                )));
+            }
+        }
+    }
+    Ok(true)
 }
 
 fn run_tool_post_install(tool: &ToolDef) -> Result<(), ForgeError> {
@@ -523,6 +598,18 @@ fn confirm_run_installed_tool_post(name: &str) -> Result<bool, ForgeError> {
 
 fn confirm_skip_tool(name: &str) -> Result<bool, ForgeError> {
     println!("工具 {name} 安装失败，是否跳过该工具继续安装？(Y/N)");
+    let mut answer = String::new();
+    io::stdin()
+        .read_line(&mut answer)
+        .map_err(|source| ForgeError::Io {
+            path: PathBuf::from("stdin"),
+            source,
+        })?;
+    Ok(matches!(answer.trim(), "Y" | "y"))
+}
+
+fn confirm_skip_tool_tag_check(name: &str) -> Result<bool, ForgeError> {
+    println!("工具 {name} 安装前检查未通过，是否跳过该工具继续安装？(Y/N)");
     let mut answer = String::new();
     io::stdin()
         .read_line(&mut answer)

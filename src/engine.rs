@@ -23,7 +23,7 @@ pub use installer::{
 pub use models::{
     Agent, CrateCandidate, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview,
     InstallReport, LoadedConfig, Profile, ProfileDef, RegistryEntry, SkillCandidate, SkillDef,
-    SkillStatus, ToolDef, ToolStatus,
+    SkillStatus, TagCheckDef, ToolDef, ToolStatus,
 };
 pub use paths::{app_home, config_dir, managed_bin_dir, manifest_config_path, registry_path};
 pub use registry::{read_registry, write_registry};
@@ -67,8 +67,12 @@ mod tests {
             cargo_config = ["[net]", "git-fetch-with-cli = true"]
             bashrc = [". \"$HOME/.cargo/env\""]
 
+            [tag_checks.proxy]
+            check = "echo proxy-ok"
+
             [[tools]]
             name = "python"
+            tags = ["proxy"]
             check = "python --version"
             install_windows = "echo install python"
 
@@ -92,6 +96,8 @@ mod tests {
         );
         assert_eq!(config.environment.bashrc, vec![". \"$HOME/.cargo/env\""]);
         assert_eq!(config.tools[0].name, "python");
+        assert_eq!(config.tools[0].tags, vec!["proxy"]);
+        assert!(config.tag_checks.contains_key("proxy"));
         assert_eq!(
             config.skills[0].agents,
             vec![Agent::Claude, Agent::OpenCode]
@@ -99,28 +105,54 @@ mod tests {
     }
 
     #[test]
-    fn builtin_profiles_are_cumulative() {
+    fn builtin_profiles_match_configured_tool_lists() {
         let config = parse_config(BUILTIN_CONFIG).unwrap();
         let light = &config.profiles["light"].tools;
         let standard = &config.profiles["standard"].tools;
         let full = &config.profiles["full"].tools;
-        assert!(standard.iter().all(|tool| full.contains(tool)));
-        assert!(light.iter().all(|tool| standard.contains(tool)));
-        assert!(light.contains(&"rust-build-base".to_string()));
+        assert_eq!(full, &Vec::<String>::new());
+        assert!(light.contains(&"cargo-llvm-cov".to_string()));
         for tool in [
-            "rust-build-base",
-            "cpp2rust-demo",
-            "c2rust-demo",
-            "rust-checker",
+            "cargo-llvm-cov",
+            "bindgen-cli",
+            "cargo-audit",
+            "cargo-deny",
+            "cargo-geiger",
             "rust-analyzer",
             "miri",
             "cargo-expand",
             "cargo-fuzz",
+            "cargo-udeps",
+            "cargo-bloat",
+            "flamegraph-rs",
+            "cargo-msrv",
+            "cargo-semver-checks",
+            "cpp2rust-demo",
+            "c2rust-demo",
+            "rust-checker",
         ] {
-            assert!(standard.contains(&tool.to_string()));
-            assert!(full.contains(&tool.to_string()));
+            assert!(light.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
         }
+        for tool in ["rust-build-base", "rust", "nvm", "nodejs"] {
+            assert!(standard.contains(&tool.to_string()));
+        }
+    }
+
+    #[test]
+    fn builtin_mirror_tag_checks_are_available_without_default_tool_tags() {
+        let config = parse_config(BUILTIN_CONFIG).unwrap();
+        for tag in [
+            "rustup-mirror",
+            "cargo-mirror",
+            "nvm-mirror",
+            "apt-mirror",
+            "npm-mirror",
+        ] {
+            let check = config.tag_checks.get(tag).unwrap();
+            assert!(check.check_command().is_some());
+        }
+        assert!(config.tools.iter().all(|tool| tool.tags.is_empty()));
     }
 
     #[test]

@@ -106,24 +106,16 @@ valgrind：不支持windows环境
 
 ## 安装等级
 
-三个等级是累进关系：
+三个等级各自安装配置文件中对应的工具清单：
 
-- `light`：轻量环境。
-- `standard`：包含 `light` 的全部内容。
-- `full`：包含 `standard` 的全部内容。
+- `light`：Cargo/Rust 辅助工具。
+- `standard`：Rust 构建基础、Rust 与 Node.js 环境。
+- `full`：当前为空。
 
 ### light
 
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
-| 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
-| 工具 | `rust` | `rustup toolchain install stable`，并安装 `rustfmt`、`clippy` |
-
-### standard
-
-| 类型 | 名称 | 默认安装方式 |
-| --- | --- | --- |
-| 工具 | `rust` | `rustup toolchain install stable && rustup component add rustfmt clippy` |
 | 工具 | `cargo-llvm-cov` | `cargo install cargo-llvm-cov` |
 | 工具 | `bindgen-cli` | `cargo install bindgen-cli` |
 | 工具 | `cargo-audit` | `cargo install cargo-audit` |
@@ -138,30 +130,22 @@ valgrind：不支持windows环境
 | 工具 | `flamegraph-rs` | `cargo install flamegraph` |
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
-| 工具 | `nvm` | Windows: `winget install -e --id CoreyButler.NVMforWindows`；Linux: `set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| PROFILE="$HOME/.bashrc" bash` |
-| 工具 | `nodejs` | 通过 `nvm install 20.17.0` 安装并启用 Node.js 20.17 |
 | 工具 | `cpp2rust-demo` | `cargo install --git https://github.com/LuuuXXX/cpp2rust-demo` |
 | 工具 | `c2rust-demo` | `cargo install --git https://github.com/LuuuXXX/c2rust-demo` |
 | 工具 | `rust-checker` | `cargo install --git https://github.com/LuuuXXX/rust-checker` |
 
-### full
-
-`full` 包含 `standard`，并增加：
+### standard
 
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
-| 工具 | `python` | Windows: `winget install Python.Python.3.12`；Linux: `sudo apt-get install -y python3 python3-pip` |
-| 工具 | `perf` | Windows: 不支持；Linux: `sudo apt-get install -y linux-tools-common linux-tools-generic linux-tools-$(uname -r)` |
-| 工具 | `gitnexus` | `npm install -g gitnexus` |
-| 工具 | `valgrind` | Windows: 不支持；Linux: `sudo apt-get install -y valgrind` |
-| 工具 | `CMake` | Windows: `winget install Kitware.CMake`；Linux: `sudo apt-get install -y cmake` |
-| 工具 | `Ninja` | Windows: `winget install Ninja-build.Ninja`；Linux: `sudo apt-get install -y ninja-build` |
-| 工具 | `Clang/libclang` | Windows: `winget install LLVM.LLVM`；Linux: `sudo apt-get install -y clang lld libclang-dev` |
-| 工具 | `llvm-tools-preview` | `rustup component add llvm-tools-preview` |
-| 工具 | `clang++/g++` | Windows: `winget install LLVM.LLVM`；Linux: `sudo apt-get install -y g++ clang` |
-| Skill | `openspec` | `https://github.com/Fission-AI/OpenSpec.git` |
-| Skill | `oh-my-opencode` | `https://github.com/code-yeongyu/oh-my-openagent.git` |
-| Skill | `superpowers` | `https://github.com/obra/superpowers.git` |
+| 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
+| 工具 | `rust` | `rustup toolchain install stable && rustup component add rustfmt clippy` |
+| 工具 | `nvm` | Windows: `winget install -e --id CoreyButler.NVMforWindows`；Linux: `set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| PROFILE="$HOME/.bashrc" bash` |
+| 工具 | `nodejs` | 通过 `nvm install 20.17.0` 安装并启用 Node.js 20.17 |
+
+### full
+
+当前 `full` 为空，没有配置工具或 skill。
 
 ## 配置文件
 
@@ -175,7 +159,7 @@ valgrind：不支持windows环境
 
 ## 配置格式
 
-配置由 `profiles`、`preinstall`、`tools`、`skills` 和 `items` 组成：
+配置由 `profiles`、`preinstall`、`environment`、`tag_checks`、`tools`、`skills` 和 `items` 组成：
 
 ```toml
 [profiles.standard]
@@ -192,8 +176,13 @@ bashrc = [
   ". \"$HOME/.cargo/env\"",
 ]
 
+[tag_checks.github]
+check_windows = "git ls-remote https://github.com/github/gitignore.git HEAD"
+check_linux = "git ls-remote https://github.com/github/gitignore.git HEAD"
+
 [[tools]]
 name = "nvm"
+tags = ["github"]
 check_windows = "nvm version"
 check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version"
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
@@ -217,7 +206,7 @@ agents = ["claude", "opencode"]
 
 分级预安装命令会按安装等级累进执行：`standard` 会执行 `light + standard`，`full` 会执行 `light + standard + full`。命令只会在用户确认安装后、当前等级存在缺失工具时执行。
 
-当前默认配置把 Linux Rust 构建基础依赖放在 `light` 等级的 `rust-build-base` 工具中，会执行 `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`。`standard` 和 `full` 继承 `light`，因此也会包含这些基础依赖。
+当前默认配置把 Linux Rust 构建基础依赖放在 `standard` 等级的 `rust-build-base` 工具中，会执行 `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`。
 
 Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命令前自动去掉 apt 相关命令前的 `sudo`，例如把 `sudo apt-get install -y cmake` 转为 `apt-get install -y cmake`。
 
@@ -250,6 +239,7 @@ cargo_config = [
 | 字段 | 说明 |
 | --- | --- |
 | `name` | 工具名称，必须与 profile 中引用的名称一致 |
+| `tags` | 工具安装前要运行的标签检查名称列表，例如 `["github", "npm"]` |
 | `check_windows` | Windows 专用检测命令 |
 | `check_linux` | Linux 专用检测命令 |
 | `install_windows` | Windows 专用安装命令 |
@@ -261,6 +251,46 @@ cargo_config = [
 `check_windows/check_linux/install_windows/install_linux` 可以填写 `"0"`，表示该工具不支持对应平台。当前平台遇到 `"0"` 时，`rsenvforge` 不会执行检测或安装命令。
 
 `post_install*` 会在对应工具的 `install*` 命令成功后立即运行，适合安装完成后才能使用的新命令，例如 node.js 安装完成后运行 npm 相关命令。如果工具在本次安装前已经存在，且配置了 `post_install*`，`rsenvforge` 会先询问是否运行该后置命令，得到 `Y` 或 `y` 后才会执行。后置命令失败时，工具会询问是否跳过当前工具继续安装。
+
+## 标签检查
+
+`[tag_checks.<名称>]` 用于定义工具安装前的测试指令。工具只有显式配置了 `tags = [...]` 才会触发对应检查，`rsenvforge` 不会自动给工具添加默认标签。
+
+```toml
+[tag_checks.github]
+check_windows = "git ls-remote https://github.com/github/gitignore.git HEAD"
+check_linux = "git ls-remote https://github.com/github/gitignore.git HEAD"
+
+[tag_checks.npm]
+check_windows = "npm --version"
+check_linux = "npm --version"
+
+[[tools]]
+name = "demo-from-github"
+tags = ["github"]
+check = "demo-from-github --version"
+install = "cargo install --git https://github.com/example/demo-from-github"
+```
+
+安装某个缺失工具前，工具会按 `tags` 顺序运行标签检查。检查通过后，同一次安装流程中相同标签不会重复检查；检查失败时会询问是否跳过当前工具继续安装。
+
+默认配置还提供五个不会自动绑定的镜像检查标签。需要时，给某个工具显式添加 `tags` 字段：
+
+| 标签 | 验证内容 | Windows | Linux |
+| --- | --- | --- | --- |
+| `rustup-mirror` | `rustup`、`RUSTUP_DIST_SERVER` 和 stable channel 文件连通性 | 支持 | 支持 |
+| `cargo-mirror` | `cargo`、Cargo registry/source 配置及 `cargo search serde` | 支持 | 支持 |
+| `nvm-mirror` | `nvm`、Node 镜像设置及 `index.tab` 连通性 | 支持 | 支持 |
+| `apt-mirror` | `apt-get` 与 apt 源更新；索引仅下载到临时目录，结束后删除 | 不支持 | 支持 |
+| `npm-mirror` | `npm`、registry 配置及 `npm ping` | 支持 | 支持 |
+
+例如，要在现有 `cargo-audit` 工具块内添加 Cargo 镜像验证：
+
+```toml
+tags = ["cargo-mirror"]
+```
+
+这些标签都必须由你显式添加，默认工具没有预设标签。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
 
 ## Skill 安装
 

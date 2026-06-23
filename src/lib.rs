@@ -7,5 +7,6 @@ pub use engine::{
     registry_path, remove_installed, update_installed, write_registry, Agent, CrateCandidate,
     ForgeError, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview,
     InstallReport, LoadedConfig, Profile, ProfileDef, RegistryEntry, SkillCandidate, SkillDef,
-    SkillStatus, ToolDef, ToolStatus, BUILTIN_CONFIG, CONFIG_FILE, REGISTRY_FILE, SKILL_FILE,
+    SkillStatus, TagCheckDef, ToolDef, ToolStatus, BUILTIN_CONFIG, CONFIG_FILE, REGISTRY_FILE,
+    SKILL_FILE,
 };

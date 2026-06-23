@@ -1,9 +1,16 @@
-# rsenvforge 默认安装表单
+# rsenvforge 历史安装表单（2026-06-22 工具等级重组前归档）
 #
-# 工具清单严格按 profile 分组填写，不会自动继承其他 profile 的工具。
+# 字段值为 "0" 表示该工具不支持对应平台，rsenvforge 会直接提示并跳过检测/安装。
 
 [profiles.light]
+tools = ["rust-build-base", "rust"]
+skills = []
+items = []
+
+[profiles.standard]
 tools = [
+  "rust-build-base",
+  "rust",
   "cargo-llvm-cov",
   "bindgen-cli",
   "cargo-audit",
@@ -18,6 +25,8 @@ tools = [
   "flamegraph-rs",
   "cargo-msrv",
   "cargo-semver-checks",
+  "nvm",
+  "nodejs",
   "cpp2rust-demo",
   "c2rust-demo",
   "rust-checker",
@@ -25,23 +34,44 @@ tools = [
 skills = []
 items = []
 
-[profiles.standard]
+[profiles.full]
 tools = [
   "rust-build-base",
   "rust",
+  "cargo-llvm-cov",
+  "bindgen-cli",
+  "cargo-audit",
+  "cargo-deny",
+  "cargo-geiger",
+  "rust-analyzer",
+  "miri",
+  "cargo-expand",
+  "cargo-fuzz",
+  "cargo-udeps",
+  "cargo-bloat",
+  "flamegraph-rs",
+  "cargo-msrv",
+  "cargo-semver-checks",
   "nvm",
   "nodejs",
+  "cpp2rust-demo",
+  "c2rust-demo",
+  "rust-checker",
+  "python",
+  "perf",
+  "gitnexus",
+  "valgrind",
+  "CMake",
+  "Ninja",
+  "Clang/libclang",
+  "llvm-tools-preview",
+  "clang++/g++",
 ]
-skills = []
-items = []
-
-# full 暂无工具。
-[profiles.full]
-tools = []
-skills = []
+skills = ["openspec", "oh-my-opencode", "superpowers"]
 items = []
 
 # 分级安装前置命令。standard 会继承 light，full 会继承 light + standard。
+# 当前默认依赖由 tools 中的 rust-build-base 安装，这里保留为空作为自定义扩展点。
 [preinstall.light.linux]
 commands = []
 
@@ -60,7 +90,6 @@ commands = []
 [preinstall.full.windows]
 commands = []
 
-# Rust 安装完成后会使用这些内容补充 Cargo 配置和 ~/.bashrc。
 [environment]
 cargo_config = [
   "[net]",
@@ -70,7 +99,7 @@ bashrc = [
   ". \"$HOME/.cargo/env\"",
 ]
 
-# 工具标签检查。只有在具体工具中显式填写 tags = [\"名称\"] 才会执行。
+# 工具标签检查。工具只有显式配置 tags = ["proxy"] 等字段时，才会在安装前运行对应检查。
 [tag_checks.proxy]
 check_windows = "powershell -NoProfile -Command \"if ($env:http_proxy -or $env:https_proxy -or $env:HTTP_PROXY -or $env:HTTPS_PROXY) { exit 0 } else { exit 1 }\""
 check_linux = "sh -lc 'test -n \"$http_proxy$https_proxy$HTTP_PROXY$HTTPS_PROXY\"'"
@@ -82,38 +111,6 @@ check_linux = "git ls-remote https://github.com/github/gitignore.git HEAD"
 [tag_checks.npm]
 check_windows = "npm --version"
 check_linux = "npm --version"
-
-# 镜像标签不会自动绑定到工具。需要时请在对应 [[tools]] 中显式填写，
-# 例如：tags = ["cargo-mirror"]。
-
-[tag_checks.rustup-mirror]
-check_windows = "powershell -NoProfile -Command \"rustup --version; if (-not $env:RUSTUP_DIST_SERVER) { exit 1 }; $url = $env:RUSTUP_DIST_SERVER.TrimEnd('/') + '/dist/channel-rust-stable.toml'; curl.exe -fsS --connect-timeout 10 $url > $null; exit $LASTEXITCODE\""
-check_linux = "if [ -f \"$HOME/.bashrc\" ]; then . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; fi; rustup --version || exit $?; test -n \"$RUSTUP_DIST_SERVER\" && curl -fsS --connect-timeout 10 \"${RUSTUP_DIST_SERVER%/}/dist/channel-rust-stable.toml\" >/dev/null"
-
-[tag_checks.cargo-mirror]
-check_windows = "powershell -NoProfile -Command \"cargo --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $home = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }; $config = Join-Path $home 'config.toml'; if (!(Test-Path $config)) { $config = Join-Path $home 'config' }; if (!(Test-Path $config) -or -not (Select-String -Path $config -Pattern 'registries|source' -Quiet)) { exit 1 }; cargo search serde --limit 1; exit $LASTEXITCODE\""
-check_linux = "cargo --version || exit $?; config=\"${CARGO_HOME:-$HOME/.cargo}/config.toml\"; if [ ! -f \"$config\" ]; then config=\"${CARGO_HOME:-$HOME/.cargo}/config\"; fi; test -s \"$config\" && grep -Eq 'registries|source' \"$config\" && cargo search serde --limit 1"
-
-[tag_checks.nvm-mirror]
-check_windows = "powershell -NoProfile -Command \"nvm version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $root = if ($env:NVM_HOME) { $env:NVM_HOME } else { Join-Path $env:APPDATA 'nvm' }; $settings = Join-Path $root 'settings.txt'; if (!(Test-Path $settings)) { exit 1 }; $line = Select-String -Path $settings -Pattern '^node_mirror:\\s*(.+)$' | Select-Object -First 1; if ($null -eq $line) { exit 1 }; $url = $line.Matches[0].Groups[1].Value.Trim().TrimEnd('/'); curl.exe -fsS --connect-timeout 10 ($url + '/index.tab') > $null; exit $LASTEXITCODE\""
-check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
-
-[tag_checks.apt-mirror]
-check_windows = "0"
-check_linux = "command -v apt-get >/dev/null || exit 1; tmp=$(mktemp -d) || exit 1; mkdir -p \"$tmp/partial\"; apt-get -o \"Dir::State::lists=$tmp\" update; status=$?; rm -rf \"$tmp\"; exit $status"
-
-[tag_checks.npm-mirror]
-check_windows = "powershell -NoProfile -Command \"npm --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $registry = (npm config get registry).Trim(); if ([string]::IsNullOrWhiteSpace($registry) -or $registry -eq 'null') { exit 1 }; npm ping --registry $registry; exit $LASTEXITCODE\""
-check_linux = "npm --version || exit $?; registry=$(npm config get registry); test -n \"$registry\" && test \"$registry\" != \"null\" && npm ping --registry \"$registry\""
-
-# 标签配置示例：删除每行开头的 # 后，再按实际工具名称和安装命令填写。
-# [[tools]]
-# name = "my-cargo-tool"
-# tags = ["cargo-mirror", "github"]
-# check_windows = "my-cargo-tool --version"
-# check_linux = "my-cargo-tool --version"
-# install_windows = "cargo install my-cargo-tool"
-# install_linux = "cargo install my-cargo-tool"
 
 [[tools]]
 name = "rust-build-base"
@@ -261,3 +258,81 @@ check_windows = "rust-checker --version"
 check_linux = "rust-checker --version"
 install_windows = "cargo install --git https://github.com/LuuuXXX/rust-checker"
 install_linux = "cargo install --git https://github.com/LuuuXXX/rust-checker"
+
+[[tools]]
+name = "python"
+check_windows = "python --version"
+check_linux = "python3 --version"
+install_windows = "winget install Python.Python.3.12"
+install_linux = "apt-get install -y python3 python3-pip"
+
+[[tools]]
+name = "perf"
+check_windows = "0"
+check_linux = "perf --version"
+install_windows = "0"
+install_linux = "apt-get install -y linux-tools-common linux-tools-generic linux-tools-$(uname -r)"
+
+[[tools]]
+name = "gitnexus"
+check_windows = "gitnexus --version"
+check_linux = "gitnexus --version"
+install_windows = "npm install -g gitnexus"
+install_linux = "npm install -g gitnexus"
+
+[[tools]]
+name = "valgrind"
+check_windows = "0"
+check_linux = "valgrind --version"
+install_windows = "0"
+install_linux = "apt-get install -y valgrind"
+
+[[tools]]
+name = "CMake"
+check_windows = "cmake --version"
+check_linux = "cmake --version"
+install_windows = "winget install Kitware.CMake"
+install_linux = "apt-get install -y cmake"
+
+[[tools]]
+name = "Ninja"
+check_windows = "ninja --version"
+check_linux = "ninja --version"
+install_windows = "winget install Ninja-build.Ninja"
+install_linux = "apt-get install -y ninja-build"
+
+[[tools]]
+name = "Clang/libclang"
+check_windows = "clang --version"
+check_linux = "clang --version"
+install_windows = "winget install LLVM.LLVM"
+install_linux = "apt-get install -y clang lld libclang-dev"
+
+[[tools]]
+name = "llvm-tools-preview"
+check_windows = "rustup component list --installed"
+check_linux = "rustup component list --installed"
+install_windows = "rustup component add llvm-tools-preview"
+install_linux = "rustup component add llvm-tools-preview"
+
+[[tools]]
+name = "clang++/g++"
+check_windows = "clang++ --version"
+check_linux = "g++ --version"
+install_windows = "winget install LLVM.LLVM"
+install_linux = "apt-get install -y g++ clang"
+
+[[skills]]
+name = "openspec"
+source = "https://github.com/Fission-AI/OpenSpec.git"
+agents = ["claude", "opencode"]
+
+[[skills]]
+name = "oh-my-opencode"
+source = "https://github.com/code-yeongyu/oh-my-openagent.git"
+agents = ["opencode"]
+
+[[skills]]
+name = "superpowers"
+source = "https://github.com/obra/superpowers.git"
+agents = ["claude", "opencode"]
