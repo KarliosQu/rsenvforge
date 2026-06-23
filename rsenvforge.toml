@@ -94,6 +94,10 @@ check_linux = "if [ -f \"$HOME/.bashrc\" ]; then . \"$HOME/.bashrc\" >/dev/null 
 check_windows = "powershell -NoProfile -Command \"cargo --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $home = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }; $config = Join-Path $home 'config.toml'; if (!(Test-Path $config)) { $config = Join-Path $home 'config' }; if (!(Test-Path $config) -or -not (Select-String -Path $config -Pattern 'registries|source' -Quiet)) { exit 1 }; cargo search serde --limit 1; exit $LASTEXITCODE\""
 check_linux = "cargo --version || exit $?; config=\"${CARGO_HOME:-$HOME/.cargo}/config.toml\"; if [ ! -f \"$config\" ]; then config=\"${CARGO_HOME:-$HOME/.cargo}/config\"; fi; test -s \"$config\" && grep -Eq 'registries|source' \"$config\" && cargo search serde --limit 1"
 
+[tag_checks.cargo-install]
+check_windows = "cargo install --list"
+check_linux = "cargo install --list"
+
 [tag_checks.nvm-mirror]
 check_windows = "powershell -NoProfile -Command \"nvm version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $root = if ($env:NVM_HOME) { $env:NVM_HOME } else { Join-Path $env:APPDATA 'nvm' }; $settings = Join-Path $root 'settings.txt'; if (!(Test-Path $settings)) { exit 1 }; $line = Select-String -Path $settings -Pattern '^node_mirror:\\s*(.+)$' | Select-Object -First 1; if ($null -eq $line) { exit 1 }; $url = $line.Matches[0].Groups[1].Value.Trim().TrimEnd('/'); curl.exe -fsS --connect-timeout 10 ($url + '/index.tab') > $null; exit $LASTEXITCODE\""
 check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
@@ -124,6 +128,7 @@ install_linux = "apt-get update && apt-get install -y build-essential pkg-config
 
 [[tools]]
 name = "rust"
+tags = ["rustup-mirror"]
 check_windows = "rustup --version"
 check_linux = "rustup --version"
 install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
@@ -131,6 +136,7 @@ install_linux = "rustup toolchain install stable && rustup component add rustfmt
 
 [[tools]]
 name = "cargo-llvm-cov"
+tags = ["cargo-install"]
 check_windows = "cargo llvm-cov --version"
 check_linux = "cargo llvm-cov --version"
 install_windows = "cargo install cargo-llvm-cov"
@@ -138,6 +144,7 @@ install_linux = "cargo install cargo-llvm-cov"
 
 [[tools]]
 name = "bindgen-cli"
+tags = ["cargo-install"]
 check_windows = "bindgen --version"
 check_linux = "bindgen --version"
 install_windows = "cargo install bindgen-cli"
@@ -145,6 +152,7 @@ install_linux = "cargo install bindgen-cli"
 
 [[tools]]
 name = "cargo-audit"
+tags = ["cargo-install"]
 check_windows = "cargo audit --version"
 check_linux = "cargo audit --version"
 install_windows = "cargo install cargo-audit"
@@ -152,6 +160,7 @@ install_linux = "cargo install cargo-audit"
 
 [[tools]]
 name = "cargo-deny"
+tags = ["cargo-install"]
 check_windows = "cargo deny --version"
 check_linux = "cargo deny --version"
 install_windows = "cargo install cargo-deny"
@@ -159,6 +168,7 @@ install_linux = "cargo install cargo-deny"
 
 [[tools]]
 name = "cargo-geiger"
+tags = ["cargo-install"]
 check_windows = "cargo geiger --version"
 check_linux = "cargo geiger --version"
 install_windows = "cargo install cargo-geiger"
@@ -166,6 +176,7 @@ install_linux = "cargo install cargo-geiger"
 
 [[tools]]
 name = "rust-analyzer"
+tags = ["rustup-mirror"]
 check_windows = "rust-analyzer --version"
 check_linux = "rust-analyzer --version"
 install_windows = "rustup component add rust-analyzer"
@@ -173,6 +184,7 @@ install_linux = "rustup component add rust-analyzer"
 
 [[tools]]
 name = "miri"
+tags = ["rustup-mirror"]
 check_windows = "cargo +nightly miri --version"
 check_linux = "cargo +nightly miri --version"
 install_windows = "rustup toolchain install nightly && rustup +nightly component add miri"
@@ -180,6 +192,7 @@ install_linux = "rustup toolchain install nightly && rustup +nightly component a
 
 [[tools]]
 name = "cargo-expand"
+tags = ["cargo-install"]
 check_windows = "cargo expand --version"
 check_linux = "cargo expand --version"
 install_windows = "cargo install cargo-expand"
@@ -187,6 +200,7 @@ install_linux = "cargo install cargo-expand"
 
 [[tools]]
 name = "cargo-fuzz"
+tags = ["cargo-install"]
 check_windows = "cargo fuzz --version"
 check_linux = "cargo fuzz --version"
 install_windows = "cargo install cargo-fuzz"
@@ -194,6 +208,7 @@ install_linux = "cargo install cargo-fuzz"
 
 [[tools]]
 name = "cargo-udeps"
+tags = ["cargo-install"]
 check_windows = "cargo udeps --version"
 check_linux = "cargo udeps --version"
 install_windows = "cargo install cargo-udeps"
@@ -201,6 +216,7 @@ install_linux = "cargo install cargo-udeps"
 
 [[tools]]
 name = "cargo-bloat"
+tags = ["cargo-install"]
 check_windows = "cargo bloat --version"
 check_linux = "cargo bloat --version"
 install_windows = "cargo install cargo-bloat"
@@ -208,6 +224,7 @@ install_linux = "cargo install cargo-bloat"
 
 [[tools]]
 name = "flamegraph-rs"
+tags = ["cargo-install"]
 check_windows = "flamegraph --version"
 check_linux = "flamegraph --version"
 install_windows = "cargo install flamegraph"
@@ -215,6 +232,7 @@ install_linux = "cargo install flamegraph"
 
 [[tools]]
 name = "cargo-msrv"
+tags = ["cargo-install"]
 check_windows = "cargo msrv --version"
 check_linux = "cargo msrv --version"
 install_windows = "cargo install cargo-msrv"
@@ -222,6 +240,7 @@ install_linux = "cargo install cargo-msrv"
 
 [[tools]]
 name = "cargo-semver-checks"
+tags = ["cargo-install"]
 check_windows = "cargo semver-checks --version"
 check_linux = "cargo semver-checks --version"
 install_windows = "cargo install cargo-semver-checks"
@@ -236,6 +255,7 @@ install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/n
 
 [[tools]]
 name = "nodejs"
+tags = ["nvm-mirror"]
 check_windows = "node --version | findstr /C:\"v20.17.\" && npm --version"
 check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm current | grep '^v20\\.17\\.' && node --version && npm --version"
 install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
@@ -243,6 +263,7 @@ install_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm install 20.17.0 && nvm alias def
 
 [[tools]]
 name = "cpp2rust-demo"
+tags = ["cargo-install"]
 check_windows = "cpp2rust-demo --version"
 check_linux = "cpp2rust-demo --version"
 install_windows = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo cpp2rust-demo"
@@ -250,6 +271,7 @@ install_linux = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo cp
 
 [[tools]]
 name = "c2rust-demo"
+tags = ["cargo-install"]
 check_windows = "c2rust-demo --version"
 check_linux = "c2rust-demo --version"
 install_windows = "cargo install --git https://github.com/LuuuXXX/c2rust-demo"
@@ -257,6 +279,7 @@ install_linux = "cargo install --git https://github.com/LuuuXXX/c2rust-demo"
 
 [[tools]]
 name = "rust-checker"
+tags = ["cargo-install"]
 check_windows = "rust-checker --version"
 check_linux = "rust-checker --version"
 install_windows = "cargo install --git https://github.com/LuuuXXX/rust-checker"

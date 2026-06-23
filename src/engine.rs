@@ -140,11 +140,12 @@ mod tests {
     }
 
     #[test]
-    fn builtin_mirror_tag_checks_are_available_without_default_tool_tags() {
+    fn builtin_tag_checks_match_install_commands() {
         let config = parse_config(BUILTIN_CONFIG).unwrap();
         for tag in [
             "rustup-mirror",
             "cargo-mirror",
+            "cargo-install",
             "nvm-mirror",
             "apt-mirror",
             "npm-mirror",
@@ -152,7 +153,48 @@ mod tests {
             let check = config.tag_checks.get(tag).unwrap();
             assert!(check.check_command().is_some());
         }
-        assert!(config.tools.iter().all(|tool| tool.tags.is_empty()));
+        for tool in [
+            "cargo-llvm-cov",
+            "bindgen-cli",
+            "cargo-audit",
+            "cargo-deny",
+            "cargo-geiger",
+            "cargo-expand",
+            "cargo-fuzz",
+            "cargo-udeps",
+            "cargo-bloat",
+            "flamegraph-rs",
+            "cargo-msrv",
+            "cargo-semver-checks",
+            "cpp2rust-demo",
+            "c2rust-demo",
+            "rust-checker",
+        ] {
+            let tool = config
+                .tools
+                .iter()
+                .find(|candidate| candidate.name == tool)
+                .unwrap();
+            assert_eq!(tool.tags, vec!["cargo-install".to_string()]);
+        }
+        for tool in ["rust", "rust-analyzer", "miri"] {
+            let tool = config
+                .tools
+                .iter()
+                .find(|candidate| candidate.name == tool)
+                .unwrap();
+            assert_eq!(tool.tags, vec!["rustup-mirror".to_string()]);
+        }
+        let nodejs = config
+            .tools
+            .iter()
+            .find(|candidate| candidate.name == "nodejs")
+            .unwrap();
+        assert_eq!(nodejs.tags, vec!["nvm-mirror".to_string()]);
+        assert!(config
+            .tools
+            .iter()
+            .all(|tool| tool.tags.iter().all(|tag| tag != "npm-mirror")));
     }
 
     #[test]

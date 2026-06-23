@@ -254,7 +254,7 @@ cargo_config = [
 
 ## 标签检查
 
-`[tag_checks.<名称>]` 用于定义工具安装前的测试指令。工具只有显式配置了 `tags = [...]` 才会触发对应检查，`rsenvforge` 不会自动给工具添加默认标签。
+`[tag_checks.<名称>]` 用于定义工具安装前的测试指令。工具只有显式配置了 `tags = [...]` 才会触发对应检查；`rsenvforge` 不会在运行时自行推断或添加标签。
 
 ```toml
 [tag_checks.github]
@@ -274,23 +274,24 @@ install = "cargo install --git https://github.com/example/demo-from-github"
 
 安装某个缺失工具前，工具会按 `tags` 顺序运行标签检查。检查通过后，同一次安装流程中相同标签不会重复检查；检查失败时会询问是否跳过当前工具继续安装。
 
-默认配置还提供五个不会自动绑定的镜像检查标签。需要时，给某个工具显式添加 `tags` 字段：
+默认配置提供以下标签检查。其中 `cargo-install`、`rustup-mirror` 和 `nvm-mirror` 已按当前工具安装命令显式绑定；其他标签可按需要手动添加：
 
 | 标签 | 验证内容 | Windows | Linux |
 | --- | --- | --- | --- |
 | `rustup-mirror` | `rustup`、`RUSTUP_DIST_SERVER` 和 stable channel 文件连通性 | 支持 | 支持 |
 | `cargo-mirror` | `cargo`、Cargo registry/source 配置及 `cargo search serde` | 支持 | 支持 |
+| `cargo-install` | `cargo install --list`，确认 Cargo 安装子命令可用 | 支持 | 支持 |
 | `nvm-mirror` | `nvm`、Node 镜像设置及 `index.tab` 连通性 | 支持 | 支持 |
 | `apt-mirror` | `apt-get` 与 apt 源更新；索引仅下载到临时目录，结束后删除 | 不支持 | 支持 |
 | `npm-mirror` | `npm`、registry 配置及 `npm ping` | 支持 | 支持 |
 
-例如，要在现有 `cargo-audit` 工具块内添加 Cargo 镜像验证：
+例如，要在现有 `cargo-audit` 工具块内，在已有 `cargo-install` 检查之外增加 Cargo 镜像验证：
 
 ```toml
-tags = ["cargo-mirror"]
+tags = ["cargo-install", "cargo-mirror"]
 ```
 
-这些标签都必须由你显式添加，默认工具没有预设标签。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
+当前配置没有安装命令调用 npm，因此没有工具绑定 `npm-mirror`。以后添加 `npm install`、`npm ci` 等命令时，可为对应工具显式添加该标签。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
 
 ## Skill 安装
 
