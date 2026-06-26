@@ -39,9 +39,12 @@ rsenvforge update [--force] [--norustup]
 rsenvforge remove <name> [--kind <skill|crate>] [--force]
 rsenvforge list
 rsenvforge doctor
+rsenvforge apt-mirror <show|check|apply> [--config <path>]
 rsenvforge help
 rsenvforge version
 ```
+
+完整的命令与配置字段说明见 [USAGE.md](USAGE.md)。
 
 ## 初始化配置
 
@@ -82,6 +85,8 @@ valgrind：不支持windows环境
 
 如果某个 profile 工具安装失败，`rsenvforge` 会询问是否跳过该工具继续安装。输入 `Y` 或 `y` 会跳过当前工具并继续后续工具；输入 `N` 或其他内容会停止安装。
 
+工具安装命令运行期间，界面会持续提示“安装过程中可输入 T 后回车，强制跳过当前工具”。输入 `T` 或 `t` 后回车会终止当前安装命令，标记该工具为已跳过，并继续安装后续工具。
+
 安装命令不会因为耗时较长而被自动停止。单个安装命令持续运行到 `120` 秒时会输出一次提醒，之后按 `240`、`480`、`960` 秒继续翻倍提醒，并显示当前已经收集到的命令行输出：
 
 ```text
@@ -103,6 +108,20 @@ valgrind：不支持windows环境
 - 如果找到 Cargo 配置文件，会直接输出整个文件内容，便于确认 registry、source、net、http 等完整配置。
 
 如果代理地址中包含 `user:password@`，输出时会脱敏为 `***@`。
+
+## 内部 APT 镜像
+
+内部 APT 镜像只支持 Linux；在 Windows 主机上请进入 WSL 后运行 Linux 版 `rsenvforge`。默认配置中的 `[apt_mirror]` 是注释示例，取消注释并填写内网 URI、suite、组件和签名 key 后使用：
+
+```bash
+rsenvforge apt-mirror show
+rsenvforge apt-mirror check
+sudo rsenvforge apt-mirror apply
+```
+
+`show` 只显示根据 `/etc/os-release` 和 `dpkg --print-architecture` 生成的候选 Deb822 源文件。`check` 使用临时目录运行 APT 验证，不写入 `/etc`，临时文件会在结束后删除。`apply` 会先执行相同验证，得到 `Y` 确认后写入 `source_file`，默认是 `/etc/apt/sources.list.d/rsenvforge.sources`。
+
+该功能不会删除、禁用或替换已有系统源；若要让内网镜像成为唯一来源，应在确认镜像可用后自行按运维策略停用原有源。不会关闭 APT 签名校验，`signed_by` 指向的内部镜像 GPG key 文件必须已存在。
 
 ## 安装等级
 
@@ -130,9 +149,9 @@ valgrind：不支持windows环境
 | 工具 | `flamegraph-rs` | `cargo install flamegraph` |
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
-| 工具 | `cpp2rust-demo` | `cargo install --git https://github.com/LuuuXXX/cpp2rust-demo` |
-| 工具 | `c2rust-demo` | `cargo install --git https://github.com/LuuuXXX/c2rust-demo` |
-| 工具 | `rust-checker` | `cargo install --git https://github.com/LuuuXXX/rust-checker` |
+| 工具 | `cpp2rust-demo` | `cargo install cpp2rust-demo` |
+| 工具 | `c2rust-demo` | `cargo install c2rust-demo` |
+| 工具 | `rust-checker-cli` | `cargo install rust-checker-cli` |
 
 ### standard
 

@@ -1,9 +1,11 @@
+mod apt_mirror;
 mod config;
 mod constants;
 mod discovery;
 mod envfile;
 mod error;
 mod fsutil;
+mod input;
 mod installer;
 mod models;
 mod paths;
@@ -12,6 +14,7 @@ mod proxy;
 mod registry;
 mod util;
 
+pub use apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror, AptMirrorPreview};
 pub use config::{init_config, load_config, parse_config};
 pub use constants::{BUILTIN_CONFIG, CONFIG_FILE, REGISTRY_FILE, SKILL_FILE};
 pub use discovery::{discover_crates, discover_skills};
@@ -21,9 +24,9 @@ pub use installer::{
     print_preview, remove_installed, update_installed,
 };
 pub use models::{
-    Agent, CrateCandidate, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview,
-    InstallReport, LoadedConfig, Profile, ProfileDef, RegistryEntry, SkillCandidate, SkillDef,
-    SkillStatus, TagCheckDef, ToolDef, ToolStatus,
+    Agent, AptMirrorDef, CrateCandidate, InstallConfig, InstallItem, InstallKind, InstallOptions,
+    InstallPreview, InstallReport, LoadedConfig, Profile, ProfileDef, RegistryEntry,
+    SkillCandidate, SkillDef, SkillStatus, TagCheckDef, ToolDef, ToolStatus,
 };
 pub use paths::{app_home, config_dir, managed_bin_dir, manifest_config_path, registry_path};
 pub use registry::{read_registry, write_registry};
@@ -105,6 +108,39 @@ mod tests {
     }
 
     #[test]
+    fn parses_apt_mirror_configuration() {
+        let config = parse_config(
+            r#"
+            [apt_mirror]
+            uri = "https://apt.internal.example/{distribution}"
+            suites = ["{codename}", "{codename}-updates"]
+            components = ["main", "universe"]
+            architectures = ["{architecture}"]
+            signed_by = "/usr/share/keyrings/internal.gpg"
+            source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.apt_mirror.uri.as_deref(),
+            Some("https://apt.internal.example/{distribution}")
+        );
+        assert_eq!(
+            config.apt_mirror.suites,
+            vec!["{codename}".to_string(), "{codename}-updates".to_string()]
+        );
+        assert_eq!(
+            config.apt_mirror.components,
+            vec!["main".to_string(), "universe".to_string()]
+        );
+        assert_eq!(
+            config.apt_mirror.architectures,
+            vec!["{architecture}".to_string()]
+        );
+    }
+
+    #[test]
     fn builtin_profiles_match_configured_tool_lists() {
         let config = parse_config(BUILTIN_CONFIG).unwrap();
         let light = &config.profiles["light"].tools;
@@ -129,7 +165,7 @@ mod tests {
             "cargo-semver-checks",
             "cpp2rust-demo",
             "c2rust-demo",
-            "rust-checker",
+            "rust-checker-cli",
         ] {
             assert!(light.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
@@ -168,7 +204,7 @@ mod tests {
             "cargo-semver-checks",
             "cpp2rust-demo",
             "c2rust-demo",
-            "rust-checker",
+            "rust-checker-cli",
         ] {
             let tool = config
                 .tools

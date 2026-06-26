@@ -174,10 +174,21 @@ pub struct InstallConfig {
     pub profiles: BTreeMap<String, ProfileDef>,
     pub preinstall: PreinstallDef,
     pub environment: EnvironmentDef,
+    pub apt_mirror: AptMirrorDef,
     pub tag_checks: BTreeMap<String, TagCheckDef>,
     pub items: Vec<InstallItem>,
     pub tools: Vec<ToolDef>,
     pub skills: Vec<SkillDef>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AptMirrorDef {
+    pub uri: Option<String>,
+    pub suites: Vec<String>,
+    pub components: Vec<String>,
+    pub architectures: Vec<String>,
+    pub signed_by: Option<String>,
+    pub source_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

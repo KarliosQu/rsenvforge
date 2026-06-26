@@ -6,8 +6,8 @@ use super::constants::{BUILTIN_CONFIG, CONFIG_FILE};
 use super::error::ForgeError;
 use super::fsutil::{read_to_string, write_file};
 use super::models::{
-    Agent, EnvironmentDef, InstallConfig, InstallItem, InstallKind, LoadedConfig, PreinstallDef,
-    PreinstallPlatform, Profile, ProfileDef, SkillDef, TagCheckDef, ToolDef,
+    Agent, AptMirrorDef, EnvironmentDef, InstallConfig, InstallItem, InstallKind, LoadedConfig,
+    PreinstallDef, PreinstallPlatform, Profile, ProfileDef, SkillDef, TagCheckDef, ToolDef,
 };
 use super::paths::{config_dir, manifest_config_path};
 use super::util::resolve_source;
@@ -81,6 +81,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
     let mut profiles: BTreeMap<String, ProfileDef> = BTreeMap::new();
     let mut preinstall = PreinstallDef::default();
     let mut environment = EnvironmentDef::default();
+    let mut apt_mirror = AptMirrorDef::default();
     let mut tag_checks: BTreeMap<String, TagCheckDef> = BTreeMap::new();
     let mut items = Vec::new();
     let mut tools = Vec::new();
@@ -190,6 +191,19 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             continue;
         }
 
+        if line == "[apt_mirror]" {
+            flush_raw(
+                &mut current_item,
+                &mut current_tool,
+                &mut current_skill,
+                &mut items,
+                &mut tools,
+                &mut skills,
+            )?;
+            section = Section::AptMirror;
+            continue;
+        }
+
         if line == "[environment]" {
             flush_raw(
                 &mut current_item,
@@ -250,6 +264,20 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 _ => {
                     return Err(ForgeError::Parse(format!(
                         "第 {} 行：environment 只支持 cargo_config/bashrc",
+                        line_number + 1
+                    )))
+                }
+            },
+            Section::AptMirror => match key {
+                "uri" => apt_mirror.uri = Some(parse_string(value)?),
+                "suites" => apt_mirror.suites = parse_string_array(value)?,
+                "components" => apt_mirror.components = parse_string_array(value)?,
+                "architectures" => apt_mirror.architectures = parse_string_array(value)?,
+                "signed_by" => apt_mirror.signed_by = Some(parse_string(value)?),
+                "source_file" => apt_mirror.source_file = Some(parse_string(value)?),
+                _ => {
+                    return Err(ForgeError::Parse(format!(
+                        "第 {} 行：apt_mirror 只支持 uri/suites/components/architectures/signed_by/source_file",
                         line_number + 1
                     )))
                 }
@@ -341,6 +369,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
         profiles,
         preinstall,
         environment,
+        apt_mirror,
         tag_checks,
         items,
         tools,
@@ -355,6 +384,9 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     }
     builtin.preinstall = config.preinstall;
     builtin.environment = config.environment;
+    if config.apt_mirror.uri.is_some() {
+        builtin.apt_mirror = config.apt_mirror;
+    }
     for (tag, check) in config.tag_checks {
         builtin.tag_checks.insert(tag, check);
     }
@@ -533,17 +565,11 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
             "cargo semver-checks --version",
             "cargo install cargo-semver-checks",
         ),
-        "cpp2rust-demo" => (
-            "cpp2rust-demo --version",
-            "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo",
-        ),
-        "c2rust-demo" => (
-            "c2rust-demo --version",
-            "cargo install --git https://github.com/LuuuXXX/c2rust-demo",
-        ),
-        "rust-checker" => (
-            "rust-checker --version",
-            "cargo install --git https://github.com/LuuuXXX/rust-checker",
+        "cpp2rust-demo" => ("cpp2rust-demo --version", "cargo install cpp2rust-demo"),
+        "c2rust-demo" => ("c2rust-demo --version", "cargo install c2rust-demo"),
+        "rust-checker-cli" => (
+            "rust-checker-cli --version",
+            "cargo install rust-checker-cli",
         ),
         "llvm-tools-preview" => (
             "rustup component list --installed",
@@ -737,6 +763,7 @@ enum Section {
         platform: PreinstallPlatform,
     },
     Environment,
+    AptMirror,
     TagCheck(String),
     Item,
     Tool,

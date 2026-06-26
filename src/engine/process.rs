@@ -6,12 +6,20 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::error::ForgeError;
+use super::input::try_read_skip_request;
 
 const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
 const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
 
-pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShellRunStatus {
+    Completed,
+    Skipped,
+}
+
+pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<ShellRunStatus, ForgeError> {
     let command = command_for_current_user(command);
+    print_skip_hint(label);
     let mut child = shell_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -34,6 +42,14 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeE
     let started = Instant::now();
     let mut next_notice = FIRST_PROGRESS_NOTICE_SECONDS;
     let status = loop {
+        if user_requested_skip()? {
+            terminate_child_process(&mut child);
+            join_output_thread(stdout_handle, &command)?;
+            join_output_thread(stderr_handle, &command)?;
+            println!("已收到跳过指令，正在跳过当前安装：{label}");
+            return Ok(ShellRunStatus::Skipped);
+        }
+
         if let Some(status) = child.try_wait().map_err(|source| ForgeError::Io {
             path: PathBuf::from(&command),
             source,
@@ -44,6 +60,7 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeE
         let elapsed = started.elapsed().as_secs();
         if elapsed >= next_notice {
             print_progress_notice(label, elapsed, &output);
+            print_skip_hint(label);
             next_notice = next_notice.saturating_mul(2);
         }
 
@@ -54,7 +71,7 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<(), ForgeE
     join_output_thread(stderr_handle, &command)?;
 
     if status.success() {
-        Ok(())
+        Ok(ShellRunStatus::Completed)
     } else {
         let output = output_snapshot(&output);
         Err(ForgeError::Command(format!(
@@ -184,6 +201,45 @@ fn print_progress_notice(label: &str, elapsed: u64, output: &Arc<Mutex<String>>)
         snapshot
     };
     println!("目前{label}的安装已经持续了{elapsed}秒，请注意，目前进度为：\n{progress}");
+}
+
+fn print_skip_hint(label: &str) {
+    println!("安装过程中可输入 T 后回车，强制跳过当前工具：{label}");
+}
+
+fn user_requested_skip() -> Result<bool, ForgeError> {
+    try_read_skip_request()
+}
+
+fn terminate_child_process(child: &mut std::process::Child) {
+    let pid = child.id();
+    terminate_process_tree(pid);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(windows)]
+fn terminate_process_tree(pid: u32) {
+    let _ = Command::new("taskkill")
+        .arg("/PID")
+        .arg(pid.to_string())
+        .arg("/T")
+        .arg("/F")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(windows))]
+fn terminate_process_tree(pid: u32) {
+    let pid = pid.to_string();
+    let _ = Command::new("pkill")
+        .arg("-TERM")
+        .arg("-P")
+        .arg(&pid)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 fn output_snapshot(output: &Arc<Mutex<String>>) -> String {

@@ -83,6 +83,20 @@ fn doctor_reports_proxy_settings() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn apt_mirror_reports_that_windows_is_unsupported() {
+    let output = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .args(["apt-mirror", "show"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("APT 镜像配置仅支持 Linux"));
+    assert!(stderr.contains("WSL 或 Linux 系统内运行"));
+}
+
 #[test]
 fn install_defaults_to_standard_profile() {
     let temp = test_dir("install_defaults_to_standard_profile");
@@ -558,6 +572,57 @@ fn failed_tool_install_can_be_skipped() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("是否跳过该工具继续安装"));
     assert!(stdout.contains("已跳过工具：fail-tool"));
+    assert!(stdout.contains("开始安装工具：ok-tool"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn running_tool_install_can_be_skipped_with_t() {
+    let temp = test_dir("running_tool_install_can_be_skipped_with_t");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["slow-tool", "ok-tool"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["slow-tool", "ok-tool"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = ["slow-tool", "ok-tool"]
+        skills = []
+        items = []
+        [[tools]]
+        name = "slow-tool"
+        check = "definitely-missing-rsenvforge-slow-tool --version"
+        install_windows = "ping 127.0.0.1 -n 6 > nul"
+        install_linux = "sleep 5"
+        [[tools]]
+        name = "ok-tool"
+        check = "definitely-missing-rsenvforge-ok-tool --version"
+        install = "echo install-ok-tool"
+        "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\nT\n",
+    );
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("安装过程中可输入 T 后回车，强制跳过当前工具：slow-tool"));
+    assert!(stdout.contains("已收到跳过指令，正在跳过当前安装：slow-tool"));
+    assert!(stdout.contains("已跳过工具：slow-tool"));
     assert!(stdout.contains("开始安装工具：ok-tool"));
 
     fs::remove_dir_all(temp).unwrap();

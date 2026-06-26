@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsStr;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
@@ -10,12 +9,13 @@ use super::discovery::{discover_crates, discover_skills};
 use super::envfile::{apply_after_rust_install_environment, apply_install_start_environment};
 use super::error::ForgeError;
 use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_file};
+use super::input::read_user_line;
 use super::models::{
     Agent, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview, InstallReport,
     Profile, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
-use super::process::{command_status_text, run_shell_capture, run_shell_labeled};
+use super::process::{command_status_text, run_shell_capture, run_shell_labeled, ShellRunStatus};
 use super::proxy::{print_proxy_report, proxy_report};
 use super::registry::{append_registry, read_registry, write_registry};
 use super::util::{
@@ -311,13 +311,7 @@ pub fn doctor_report() -> Vec<String> {
 
 fn confirm_remove() -> Result<bool, ForgeError> {
     println!("请确认是否删除以上安装项？(Y/N)");
-    let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|source| ForgeError::Io {
-            path: PathBuf::from("stdin"),
-            source,
-        })?;
+    let answer = read_user_line()?;
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
@@ -417,13 +411,7 @@ fn check_skill(skill: &SkillDef, agent: Agent) -> SkillStatus {
 
 fn confirm_install() -> Result<bool, ForgeError> {
     println!("以上为目前工具安装情况，请问是否安装缺失工具？(Y/N)");
-    let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|source| ForgeError::Io {
-            path: PathBuf::from("stdin"),
-            source,
-        })?;
+    let answer = read_user_line()?;
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
@@ -482,16 +470,23 @@ fn install_tool(
         return Ok(());
     }
     println!("开始安装工具：{}", tool.name);
-    if let Err(error) = run_shell_labeled(&tool.name, command) {
-        println!("工具 {} 安装失败：{error}", tool.name);
-        if confirm_skip_tool(&tool.name)? {
+    match run_shell_labeled(&tool.name, command) {
+        Ok(ShellRunStatus::Completed) => {}
+        Ok(ShellRunStatus::Skipped) => {
             println!("已跳过工具：{}", tool.name);
             return Ok(());
         }
-        return Err(ForgeError::Command(format!(
-            "工具 {} 安装失败：{error}",
-            tool.name
-        )));
+        Err(error) => {
+            println!("工具 {} 安装失败：{error}", tool.name);
+            if confirm_skip_tool(&tool.name)? {
+                println!("已跳过工具：{}", tool.name);
+                return Ok(());
+            }
+            return Err(ForgeError::Command(format!(
+                "工具 {} 安装失败：{error}",
+                tool.name
+            )));
+        }
     }
     run_tool_post_install(tool)?;
     println!("工具 {} 安装完成。", tool.name);
@@ -569,16 +564,23 @@ fn run_tool_post_install(tool: &ToolDef) -> Result<(), ForgeError> {
         return Ok(());
     };
     println!("开始运行工具安装后命令：{}", tool.name);
-    if let Err(error) = run_shell_labeled(&format!("{} 安装后命令", tool.name), post_command) {
-        println!("工具 {} 安装后命令失败：{error}", tool.name);
-        if confirm_skip_tool(&tool.name)? {
+    match run_shell_labeled(&format!("{} 安装后命令", tool.name), post_command) {
+        Ok(ShellRunStatus::Completed) => {}
+        Ok(ShellRunStatus::Skipped) => {
             println!("已跳过工具安装后命令：{}", tool.name);
             return Ok(());
         }
-        return Err(ForgeError::Command(format!(
-            "工具 {} 安装后命令失败：{error}",
-            tool.name
-        )));
+        Err(error) => {
+            println!("工具 {} 安装后命令失败：{error}", tool.name);
+            if confirm_skip_tool(&tool.name)? {
+                println!("已跳过工具安装后命令：{}", tool.name);
+                return Ok(());
+            }
+            return Err(ForgeError::Command(format!(
+                "工具 {} 安装后命令失败：{error}",
+                tool.name
+            )));
+        }
     }
     println!("工具 {} 安装后命令完成。", tool.name);
     Ok(())
@@ -586,37 +588,19 @@ fn run_tool_post_install(tool: &ToolDef) -> Result<(), ForgeError> {
 
 fn confirm_run_installed_tool_post(name: &str) -> Result<bool, ForgeError> {
     println!("工具 {name} 已安装且配置了安装后命令，是否运行该命令？(Y/N)");
-    let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|source| ForgeError::Io {
-            path: PathBuf::from("stdin"),
-            source,
-        })?;
+    let answer = read_user_line()?;
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
 fn confirm_skip_tool(name: &str) -> Result<bool, ForgeError> {
     println!("工具 {name} 安装失败，是否跳过该工具继续安装？(Y/N)");
-    let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|source| ForgeError::Io {
-            path: PathBuf::from("stdin"),
-            source,
-        })?;
+    let answer = read_user_line()?;
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
 fn confirm_skip_tool_tag_check(name: &str) -> Result<bool, ForgeError> {
     println!("工具 {name} 安装前检查未通过，是否跳过该工具继续安装？(Y/N)");
-    let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|source| ForgeError::Io {
-            path: PathBuf::from("stdin"),
-            source,
-        })?;
+    let answer = read_user_line()?;
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
@@ -643,7 +627,9 @@ fn run_preinstall_commands(
     println!("执行安装前准备命令：");
     for command in commands {
         println!("  {}", command);
-        run_shell_labeled("安装前准备命令", &command)?;
+        if run_shell_labeled("安装前准备命令", &command)? == ShellRunStatus::Skipped {
+            println!("已跳过安装前准备命令。");
+        }
     }
     Ok(())
 }
@@ -883,7 +869,7 @@ fn prepare_source(source: &str, update: bool) -> Result<PathBuf, ForgeError> {
         .join(format!("{:016x}", fnv1a(source)));
     if cache_path.exists() {
         if update {
-            run_shell_labeled(
+            let _ = run_shell_labeled(
                 &source_name(source),
                 &format!("git -C {} pull --ff-only", shell_quote(&cache_path)),
             )?;
@@ -894,7 +880,7 @@ fn prepare_source(source: &str, update: bool) -> Result<PathBuf, ForgeError> {
     if let Some(parent) = cache_path.parent() {
         create_dir_all(parent)?;
     }
-    run_shell_labeled(
+    let _ = run_shell_labeled(
         &source_name(source),
         &format!(
             "git clone --depth 1 {} {}",
@@ -911,7 +897,7 @@ fn build_and_copy_binary(manifest: &Path, bin: &str, target: &Path) -> Result<()
             "未找到 cargo，且没有匹配的预编译二进制。".to_string(),
         ));
     }
-    run_shell_labeled(
+    let _ = run_shell_labeled(
         bin,
         &format!(
             "cargo build --release --manifest-path {} --bin {}",

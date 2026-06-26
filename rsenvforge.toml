@@ -20,7 +20,7 @@ tools = [
   "cargo-semver-checks",
   "cpp2rust-demo",
   "c2rust-demo",
-  "rust-checker",
+  "rust-checker-cli",
 ]
 skills = []
 items = []
@@ -69,6 +69,58 @@ cargo_config = [
 bashrc = [
   ". \"$HOME/.cargo/env\"",
 ]
+
+# 镜像预设示例。以下内容全部保持注释状态，不参与当前测试或安装。
+# 需要启用时，请把对应内容复制到上方 [environment]、下方 [apt_mirror]
+# 或对应工具的 install/post_install 命令中，并按内网实际路径调整。
+#
+# APT 镜像：
+# [apt_mirror]
+# uri = "https://mirror.com/{distribution}"
+# suites = ["{codename}", "{codename}-updates", "{codename}-security"]
+# components = ["main", "restricted", "universe", "multiverse"]
+# architectures = ["{architecture}"]
+# source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+#
+# Cargo 镜像：
+# cargo_config = [
+#   "[source.crates-io]",
+#   "replace-with = \"mirror\"",
+#   "[source.mirror]",
+#   "registry = \"sparse+https://mirror.com/crates.io-index/\"",
+#   "[net]",
+#   "git-fetch-with-cli = true",
+# ]
+#
+# Rustup 镜像：
+# bashrc = [
+#   "export RUSTUP_DIST_SERVER=https://mirror.com/rustup",
+#   "export RUSTUP_UPDATE_ROOT=https://mirror.com/rustup/rustup",
+#   ". \"$HOME/.cargo/env\"",
+# ]
+#
+# NVM / Node.js 镜像：
+# bashrc = [
+#   "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
+#   ". \"$HOME/.cargo/env\"",
+# ]
+#
+# npm 镜像：
+# post_install_windows = "npm config set registry https://mirror.com/npm/"
+# post_install_linux = "npm config set registry https://mirror.com/npm/"
+
+# 内部 APT 镜像示例。取消注释后，先执行：
+# rsenvforge apt-mirror check
+# 验证通过后，再执行：
+# rsenvforge apt-mirror apply
+# 可用变量：{distribution}、{codename}、{architecture}。
+# [apt_mirror]
+# uri = "https://apt.internal.example/{distribution}"
+# suites = ["{codename}", "{codename}-updates", "{codename}-security"]
+# components = ["main", "restricted", "universe", "multiverse"]
+# architectures = ["{architecture}"]
+# signed_by = "/usr/share/keyrings/internal-archive-keyring.gpg"
+# source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
 
 # 工具标签检查。只有在具体工具中显式填写 tags = [\"名称\"] 才会执行。
 [tag_checks.proxy]
@@ -248,8 +300,8 @@ install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
 name = "nvm"
-check_windows = "nvm version"
-check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version"
+check_windows = "nvm --version"
+check_linux = "nvm --version"
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
 install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
 
@@ -266,21 +318,21 @@ name = "cpp2rust-demo"
 tags = ["cargo-install"]
 check_windows = "cpp2rust-demo --version"
 check_linux = "cpp2rust-demo --version"
-install_windows = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo cpp2rust-demo"
-install_linux = "cargo install --git https://github.com/LuuuXXX/cpp2rust-demo cpp2rust-demo"
+install_windows = "cargo install cpp2rust-demo"
+install_linux = "cargo install cpp2rust-demo"
 
 [[tools]]
 name = "c2rust-demo"
 tags = ["cargo-install"]
 check_windows = "c2rust-demo --version"
 check_linux = "c2rust-demo --version"
-install_windows = "cargo install --git https://github.com/LuuuXXX/c2rust-demo"
-install_linux = "cargo install --git https://github.com/LuuuXXX/c2rust-demo"
+install_windows = "cargo install c2rust-demo"
+install_linux = "cargo install c2rust-demo"
 
 [[tools]]
-name = "rust-checker"
+name = "rust-checker-cli"
 tags = ["cargo-install"]
-check_windows = "rust-checker --version"
-check_linux = "rust-checker --version"
-install_windows = "cargo install --git https://github.com/LuuuXXX/rust-checker"
-install_linux = "cargo install --git https://github.com/LuuuXXX/rust-checker"
+check_windows = "rust-checker-cli --version"
+check_linux = "rust-checker-cli --version"
+install_windows = "cargo install rust-checker-cli"
+install_linux = "cargo install rust-checker-cli"
