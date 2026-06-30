@@ -70,10 +70,14 @@ cargo_config = [
 bashrc = [
   ". \"$HOME/.cargo/env\"",
 ]
+npmrc = [
+  # "registry=https://mirror.com/npm/",
+  # "strict-ssl=false",
+]
 
 # 镜像预设示例。以下内容全部保持注释状态，不参与当前测试或安装。
-# 需要启用时，请把对应内容复制到上方 [environment]、下方 [apt_mirror]
-# 或对应工具的 install/post_install 命令中，并按内网实际路径调整。
+# 需要启用时，请把对应内容复制到上方 [environment] 或下方 [apt_mirror]，
+# 并按内网实际路径调整。
 #
 # APT 镜像：
 # [apt_mirror]
@@ -82,6 +86,19 @@ bashrc = [
 # components = ["main", "restricted", "universe", "multiverse"]
 # architectures = ["{architecture}"]
 # source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+#
+# 如果同一系统的不同架构需要不同镜像，可以使用 rules。
+# 未在 rule 中填写的 suites/components/architectures/signed_by/source_file
+# 会继承 [apt_mirror] 中的默认值；规则按书写顺序匹配，命中第一条即使用。
+# [[apt_mirror.rules]]
+# distribution = "ubuntu"
+# architecture = "amd64"
+# uri = "https://mirror-amd64.example/ubuntu"
+#
+# [[apt_mirror.rules]]
+# distribution = "ubuntu"
+# architecture = "arm64"
+# uri = "https://mirror-arm64.example/ubuntu"
 #
 # Cargo 镜像：
 # cargo_config = [
@@ -107,8 +124,10 @@ bashrc = [
 # ]
 #
 # npm 镜像：
-# post_install_windows = "npm config set registry https://mirror.com/npm/"
-# post_install_linux = "npm config set registry https://mirror.com/npm/"
+# npmrc = [
+#   "registry=https://mirror.com/npm/",
+#   "strict-ssl=false",
+# ]
 
 # 内部 APT 镜像示例。取消注释后，先执行：
 # rsenvforge apt-mirror check
@@ -122,6 +141,16 @@ bashrc = [
 # architectures = ["{architecture}"]
 # signed_by = "/usr/share/keyrings/internal-archive-keyring.gpg"
 # source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+#
+# [[apt_mirror.rules]]
+# distribution = "ubuntu"
+# architecture = "amd64"
+# uri = "https://apt-amd64.internal.example/ubuntu"
+#
+# [[apt_mirror.rules]]
+# distribution = "ubuntu"
+# architecture = "arm64"
+# uri = "https://apt-arm64.internal.example/ubuntu"
 
 # 工具标签检查。只有在具体工具中显式填写 tags = [\"名称\"] 才会执行。
 [tag_checks.proxy]

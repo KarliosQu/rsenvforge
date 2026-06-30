@@ -3,6 +3,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
+use super::apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror};
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
 use super::constants::{CONFIG_FILE, SKILL_FILE};
 use super::discovery::{discover_crates, discover_skills};
@@ -78,6 +79,7 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         .tools
         .iter()
         .any(|status| status.name == "rust" && status.supported && !status.installed);
+    maybe_apply_apt_mirror_for_install(&config)?;
     run_preinstall_commands(&config, options.profile, &preview)?;
     process_profile_tools(&config, options.profile, &preview)?;
     if rust_missing {
@@ -413,6 +415,29 @@ fn confirm_install() -> Result<bool, ForgeError> {
     println!("以上为目前工具安装情况，请问是否安装缺失工具？(Y/N)");
     let answer = read_user_line()?;
     Ok(matches!(answer.trim(), "Y" | "y"))
+}
+
+fn maybe_apply_apt_mirror_for_install(config: &InstallConfig) -> Result<(), ForgeError> {
+    if !cfg!(target_os = "linux")
+        || (config.apt_mirror.uri.is_none() && config.apt_mirror.rules.is_empty())
+    {
+        return Ok(());
+    }
+
+    println!("是否使用内部apt镜像？如果未配置proxy，不使用apt镜像可能导致部分工具安装失败。(Y/N)");
+    let answer = read_user_line()?;
+    if !matches!(answer.trim(), "Y" | "y") {
+        println!("已跳过内部 APT 镜像配置。");
+        return Ok(());
+    }
+
+    let preview = apt_mirror_preview(config)?;
+    println!("开始验证内部 APT 镜像，不会直接修改系统源文件。");
+    println!("APT 镜像源文件：{}", preview.source_file.display());
+    check_apt_mirror(&preview)?;
+    apply_apt_mirror(&preview)?;
+    println!("已写入内部 APT 镜像配置：{}", preview.source_file.display());
+    Ok(())
 }
 
 #[derive(Default)]

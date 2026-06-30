@@ -24,9 +24,9 @@ pub use installer::{
     print_preview, remove_installed, update_installed,
 };
 pub use models::{
-    Agent, AptMirrorDef, CrateCandidate, InstallConfig, InstallItem, InstallKind, InstallOptions,
-    InstallPreview, InstallReport, LoadedConfig, Profile, ProfileDef, RegistryEntry,
-    SkillCandidate, SkillDef, SkillStatus, TagCheckDef, ToolDef, ToolStatus,
+    Agent, AptMirrorDef, AptMirrorRuleDef, CrateCandidate, InstallConfig, InstallItem, InstallKind,
+    InstallOptions, InstallPreview, InstallReport, LoadedConfig, Profile, ProfileDef,
+    RegistryEntry, SkillCandidate, SkillDef, SkillStatus, TagCheckDef, ToolDef, ToolStatus,
 };
 pub use paths::{app_home, config_dir, managed_bin_dir, manifest_config_path, registry_path};
 pub use registry::{read_registry, write_registry};
@@ -69,6 +69,7 @@ mod tests {
             [environment]
             cargo_config = ["[net]", "git-fetch-with-cli = true"]
             bashrc = [". \"$HOME/.cargo/env\""]
+            npmrc = ["registry=https://mirror.com/npm/"]
 
             [tag_checks.proxy]
             check = "echo proxy-ok"
@@ -98,6 +99,10 @@ mod tests {
             vec!["[net]", "git-fetch-with-cli = true"]
         );
         assert_eq!(config.environment.bashrc, vec![". \"$HOME/.cargo/env\""]);
+        assert_eq!(
+            config.environment.npmrc,
+            vec!["registry=https://mirror.com/npm/"]
+        );
         assert_eq!(config.tools[0].name, "python");
         assert_eq!(config.tools[0].tags, vec!["proxy"]);
         assert!(config.tag_checks.contains_key("proxy"));
@@ -118,6 +123,11 @@ mod tests {
             architectures = ["{architecture}"]
             signed_by = "/usr/share/keyrings/internal.gpg"
             source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+
+            [[apt_mirror.rules]]
+            distribution = "ubuntu"
+            architecture = "amd64"
+            uri = "https://amd64.internal.example/ubuntu"
             "#,
         )
         .unwrap();
@@ -137,6 +147,11 @@ mod tests {
         assert_eq!(
             config.apt_mirror.architectures,
             vec!["{architecture}".to_string()]
+        );
+        assert_eq!(config.apt_mirror.rules.len(), 1);
+        assert_eq!(
+            config.apt_mirror.rules[0].uri.as_deref(),
+            Some("https://amd64.internal.example/ubuntu")
         );
     }
 

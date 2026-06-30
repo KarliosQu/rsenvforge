@@ -8,8 +8,13 @@ use super::util::home_dir;
 
 pub(crate) fn apply_install_start_environment(config: &InstallConfig) -> Result<(), ForgeError> {
     write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
+    append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
     if cfg!(target_os = "linux") {
-        append_lines_if_missing(&home_dir().join(".bashrc"), &config.environment.bashrc)?;
+        append_lines_if_missing(
+            "bashrc",
+            &home_dir().join(".bashrc"),
+            &config.environment.bashrc,
+        )?;
     }
     Ok(())
 }
@@ -18,8 +23,13 @@ pub(crate) fn apply_after_rust_install_environment(
     config: &InstallConfig,
 ) -> Result<(), ForgeError> {
     write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
+    append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
     if cfg!(target_os = "linux") {
-        append_lines_if_missing(&home_dir().join(".bashrc"), &config.environment.bashrc)?;
+        append_lines_if_missing(
+            "bashrc",
+            &home_dir().join(".bashrc"),
+            &config.environment.bashrc,
+        )?;
     }
     Ok(())
 }
@@ -29,6 +39,10 @@ fn cargo_config_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|_| home_dir().join(".cargo"))
         .join("config.toml")
+}
+
+fn npmrc_path() -> PathBuf {
+    home_dir().join(".npmrc")
 }
 
 fn write_cargo_config_if_empty(path: &Path, lines: &[String]) -> Result<(), ForgeError> {
@@ -48,7 +62,7 @@ fn write_cargo_config_if_empty(path: &Path, lines: &[String]) -> Result<(), Forg
     Ok(())
 }
 
-fn append_lines_if_missing(path: &Path, lines: &[String]) -> Result<(), ForgeError> {
+fn append_lines_if_missing(label: &str, path: &Path, lines: &[String]) -> Result<(), ForgeError> {
     if lines.is_empty() {
         return Ok(());
     }
@@ -59,7 +73,7 @@ fn append_lines_if_missing(path: &Path, lines: &[String]) -> Result<(), ForgeErr
         .cloned()
         .collect::<Vec<_>>();
     if missing.is_empty() {
-        println!("bashrc 已包含 rsenvforge 环境配置：{}", path.display());
+        println!("{label} 已包含 rsenvforge 环境配置：{}", path.display());
         return Ok(());
     }
     if !existing.is_empty() && !existing.ends_with('\n') {
@@ -69,7 +83,7 @@ fn append_lines_if_missing(path: &Path, lines: &[String]) -> Result<(), ForgeErr
     existing.push_str(&missing.join("\n"));
     existing.push('\n');
     write_text(path, &existing)?;
-    println!("已更新 bashrc：{}", path.display());
+    println!("已更新 {label}：{}", path.display());
     Ok(())
 }
 
@@ -128,14 +142,47 @@ mod tests {
         fs::create_dir_all(&temp).unwrap();
         fs::write(&path, "export DEMO=1\n").unwrap();
 
-        append_lines_if_missing(&path, &[". \"$HOME/.cargo/env\"".to_string()]).unwrap();
+        append_lines_if_missing("bashrc", &path, &[". \"$HOME/.cargo/env\"".to_string()]).unwrap();
         let contents = fs::read_to_string(&path).unwrap();
         assert!(contents.contains("export DEMO=1"));
         assert!(contents.contains(". \"$HOME/.cargo/env\""));
 
-        append_lines_if_missing(&path, &[". \"$HOME/.cargo/env\"".to_string()]).unwrap();
+        append_lines_if_missing("bashrc", &path, &[". \"$HOME/.cargo/env\"".to_string()]).unwrap();
         let contents = fs::read_to_string(&path).unwrap();
         assert_eq!(contents.matches(". \"$HOME/.cargo/env\"").count(), 1);
+
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn appends_missing_npmrc_lines() {
+        let temp =
+            std::env::temp_dir().join(format!("rsenvforge-envfile-npmrc-{}", std::process::id()));
+        let path = temp.join(".npmrc");
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(&path, "strict-ssl=false\n").unwrap();
+
+        append_lines_if_missing(
+            "npmrc",
+            &path,
+            &["registry=https://mirror.com/npm/".to_string()],
+        )
+        .unwrap();
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("strict-ssl=false"));
+        assert!(contents.contains("registry=https://mirror.com/npm/"));
+
+        append_lines_if_missing(
+            "npmrc",
+            &path,
+            &["registry=https://mirror.com/npm/".to_string()],
+        )
+        .unwrap();
+        let contents = fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            contents.matches("registry=https://mirror.com/npm/").count(),
+            1
+        );
 
         fs::remove_dir_all(temp).unwrap();
     }

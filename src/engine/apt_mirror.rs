@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::error::ForgeError;
 use super::fsutil::{create_dir_all, read_to_string, remove_dir_all, write_file};
-use super::models::{AptMirrorDef, InstallConfig};
+use super::models::{AptMirrorDef, AptMirrorRuleDef, InstallConfig};
 
 const DEFAULT_SOURCE_FILE: &str = "/etc/apt/sources.list.d/rsenvforge.sources";
 
@@ -139,29 +139,29 @@ fn build_preview(
     mirror: &AptMirrorDef,
     system: &AptSystem,
 ) -> Result<AptMirrorPreview, ForgeError> {
-    let uri = expand_required(mirror.uri.as_deref(), "uri", system)?;
+    let mirror = select_mirror(mirror, system)?;
+    let uri = expand_required(mirror.uri, "uri", system)?;
     if !(uri.starts_with("http://") || uri.starts_with("https://")) {
         return Err(ForgeError::Config(
             "apt_mirror.uri 必须以 http:// 或 https:// 开头".to_string(),
         ));
     }
     validate_scalar("apt_mirror.uri", &uri)?;
-    let suites = expand_list(&mirror.suites, "suites", system)?;
-    let components = expand_list(&mirror.components, "components", system)?;
+    let suites = expand_list(mirror.suites, "suites", system)?;
+    let components = expand_list(mirror.components, "components", system)?;
     let architectures = if mirror.architectures.is_empty() {
         vec![system.architecture.clone()]
     } else {
-        expand_list(&mirror.architectures, "architectures", system)?
+        expand_list(mirror.architectures, "architectures", system)?
     };
     let signed_by = mirror
         .signed_by
-        .as_deref()
         .map(|value| expand_template(value, system))
         .transpose()?;
     if let Some(value) = &signed_by {
         validate_scalar("apt_mirror.signed_by", value)?;
     }
-    let source_file = mirror.source_file.as_deref().unwrap_or(DEFAULT_SOURCE_FILE);
+    let source_file = mirror.source_file.unwrap_or(DEFAULT_SOURCE_FILE);
     if !source_file.starts_with('/') {
         return Err(ForgeError::Config(
             "apt_mirror.source_file 必须是 Linux 绝对路径".to_string(),
@@ -185,6 +185,72 @@ fn build_preview(
         source_file: PathBuf::from(source_file),
         source_contents: contents,
     })
+}
+
+struct SelectedAptMirror<'a> {
+    uri: Option<&'a str>,
+    suites: &'a [String],
+    components: &'a [String],
+    architectures: &'a [String],
+    signed_by: Option<&'a str>,
+    source_file: Option<&'a str>,
+}
+
+fn select_mirror<'a>(
+    mirror: &'a AptMirrorDef,
+    system: &AptSystem,
+) -> Result<SelectedAptMirror<'a>, ForgeError> {
+    if let Some(rule) = mirror.rules.iter().find(|rule| rule_matches(rule, system)) {
+        return Ok(SelectedAptMirror {
+            uri: rule.uri.as_deref().or(mirror.uri.as_deref()),
+            suites: if rule.suites.is_empty() {
+                &mirror.suites
+            } else {
+                &rule.suites
+            },
+            components: if rule.components.is_empty() {
+                &mirror.components
+            } else {
+                &rule.components
+            },
+            architectures: if rule.architectures.is_empty() {
+                &mirror.architectures
+            } else {
+                &rule.architectures
+            },
+            signed_by: rule.signed_by.as_deref().or(mirror.signed_by.as_deref()),
+            source_file: rule
+                .source_file
+                .as_deref()
+                .or(mirror.source_file.as_deref()),
+        });
+    }
+
+    if !mirror.rules.is_empty() && mirror.uri.is_none() {
+        return Err(ForgeError::Config(format!(
+            "apt_mirror.rules 没有匹配当前系统：distribution={} codename={} architecture={}",
+            system.distribution, system.codename, system.architecture
+        )));
+    }
+
+    Ok(SelectedAptMirror {
+        uri: mirror.uri.as_deref(),
+        suites: &mirror.suites,
+        components: &mirror.components,
+        architectures: &mirror.architectures,
+        signed_by: mirror.signed_by.as_deref(),
+        source_file: mirror.source_file.as_deref(),
+    })
+}
+
+fn rule_matches(rule: &AptMirrorRuleDef, system: &AptSystem) -> bool {
+    selector_matches(rule.distribution.as_deref(), &system.distribution)
+        && selector_matches(rule.codename.as_deref(), &system.codename)
+        && selector_matches(rule.architecture.as_deref(), &system.architecture)
+}
+
+fn selector_matches(selector: Option<&str>, actual: &str) -> bool {
+    selector.is_none_or(|selector| selector == actual)
 }
 
 fn expand_required(
@@ -267,7 +333,7 @@ fn temp_dir(prefix: &str) -> Result<PathBuf, ForgeError> {
 #[cfg(test)]
 mod tests {
     use super::{build_preview, AptSystem};
-    use crate::AptMirrorDef;
+    use crate::{AptMirrorDef, AptMirrorRuleDef};
 
     #[test]
     fn renders_deb822_source_with_system_variables() {
@@ -278,6 +344,7 @@ mod tests {
             architectures: Vec::new(),
             signed_by: Some("/usr/share/keyrings/internal.gpg".to_string()),
             source_file: Some("/etc/apt/sources.list.d/rsenvforge.sources".to_string()),
+            rules: Vec::new(),
         };
         let system = AptSystem {
             distribution: "ubuntu".to_string(),
@@ -291,5 +358,41 @@ mod tests {
             preview.source_contents,
             "Types: deb\nURIs: https://apt.example.internal/ubuntu\nSuites: noble noble-updates\nComponents: main universe\nArchitectures: amd64\nSigned-By: /usr/share/keyrings/internal.gpg\n"
         );
+    }
+
+    #[test]
+    fn selects_first_matching_rule_for_distribution_and_architecture() {
+        let mirror = AptMirrorDef {
+            suites: vec!["{codename}".to_string()],
+            components: vec!["main".to_string()],
+            source_file: Some("/etc/apt/sources.list.d/rsenvforge.sources".to_string()),
+            rules: vec![
+                AptMirrorRuleDef {
+                    distribution: Some("ubuntu".to_string()),
+                    architecture: Some("amd64".to_string()),
+                    uri: Some("https://amd64.example.internal/ubuntu".to_string()),
+                    ..AptMirrorRuleDef::default()
+                },
+                AptMirrorRuleDef {
+                    distribution: Some("ubuntu".to_string()),
+                    architecture: Some("arm64".to_string()),
+                    uri: Some("https://arm64.example.internal/ubuntu".to_string()),
+                    ..AptMirrorRuleDef::default()
+                },
+            ],
+            ..AptMirrorDef::default()
+        };
+        let system = AptSystem {
+            distribution: "ubuntu".to_string(),
+            codename: "noble".to_string(),
+            architecture: "arm64".to_string(),
+        };
+
+        let preview = build_preview(&mirror, &system).unwrap();
+
+        assert!(preview
+            .source_contents
+            .contains("URIs: https://arm64.example.internal/ubuntu"));
+        assert!(preview.source_contents.contains("Architectures: arm64"));
     }
 }

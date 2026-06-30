@@ -6,8 +6,9 @@ use super::constants::{BUILTIN_CONFIG, CONFIG_FILE};
 use super::error::ForgeError;
 use super::fsutil::{read_to_string, write_file};
 use super::models::{
-    Agent, AptMirrorDef, EnvironmentDef, InstallConfig, InstallItem, InstallKind, LoadedConfig,
-    PreinstallDef, PreinstallPlatform, Profile, ProfileDef, SkillDef, TagCheckDef, ToolDef,
+    Agent, AptMirrorDef, AptMirrorRuleDef, EnvironmentDef, InstallConfig, InstallItem, InstallKind,
+    LoadedConfig, PreinstallDef, PreinstallPlatform, Profile, ProfileDef, SkillDef, TagCheckDef,
+    ToolDef,
 };
 use super::paths::{config_dir, manifest_config_path};
 use super::util::resolve_source;
@@ -98,7 +99,11 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             continue;
         }
 
-        if line == "[[items]]" || line == "[[tools]]" || line == "[[skills]]" {
+        if line == "[[items]]"
+            || line == "[[tools]]"
+            || line == "[[skills]]"
+            || line == "[[apt_mirror.rules]]"
+        {
             flush_raw(
                 &mut current_item,
                 &mut current_tool,
@@ -115,6 +120,10 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 "[[tools]]" => {
                     current_tool = Some(RawTool::default());
                     Section::Tool
+                }
+                "[[apt_mirror.rules]]" => {
+                    apt_mirror.rules.push(AptMirrorRuleDef::default());
+                    Section::AptMirrorRule(apt_mirror.rules.len() - 1)
                 }
                 _ => {
                     current_skill = Some(RawSkill::default());
@@ -261,9 +270,10 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             Section::Environment => match key {
                 "cargo_config" => environment.cargo_config = parse_string_array(value)?,
                 "bashrc" => environment.bashrc = parse_string_array(value)?,
+                "npmrc" => environment.npmrc = parse_string_array(value)?,
                 _ => {
                     return Err(ForgeError::Parse(format!(
-                        "第 {} 行：environment 只支持 cargo_config/bashrc",
+                        "第 {} 行：environment 只支持 cargo_config/bashrc/npmrc",
                         line_number + 1
                     )))
                 }
@@ -282,6 +292,31 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     )))
                 }
             },
+            Section::AptMirrorRule(index) => {
+                let Some(rule) = apt_mirror.rules.get_mut(*index) else {
+                    return Err(ForgeError::Parse(format!(
+                        "第 {} 行：apt_mirror.rules 内部索引无效",
+                        line_number + 1
+                    )));
+                };
+                match key {
+                    "distribution" => rule.distribution = Some(parse_string(value)?),
+                    "codename" => rule.codename = Some(parse_string(value)?),
+                    "architecture" => rule.architecture = Some(parse_string(value)?),
+                    "uri" => rule.uri = Some(parse_string(value)?),
+                    "suites" => rule.suites = parse_string_array(value)?,
+                    "components" => rule.components = parse_string_array(value)?,
+                    "architectures" => rule.architectures = parse_string_array(value)?,
+                    "signed_by" => rule.signed_by = Some(parse_string(value)?),
+                    "source_file" => rule.source_file = Some(parse_string(value)?),
+                    _ => {
+                        return Err(ForgeError::Parse(format!(
+                            "第 {} 行：apt_mirror.rules 只支持 distribution/codename/architecture/uri/suites/components/architectures/signed_by/source_file",
+                            line_number + 1
+                        )))
+                    }
+                }
+            }
             Section::TagCheck(tag) => {
                 let tag_check = tag_checks.entry(tag.clone()).or_default();
                 match key {
@@ -384,7 +419,7 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     }
     builtin.preinstall = config.preinstall;
     builtin.environment = config.environment;
-    if config.apt_mirror.uri.is_some() {
+    if config.apt_mirror.uri.is_some() || !config.apt_mirror.rules.is_empty() {
         builtin.apt_mirror = config.apt_mirror;
     }
     for (tag, check) in config.tag_checks {
@@ -764,6 +799,7 @@ enum Section {
     },
     Environment,
     AptMirror,
+    AptMirrorRule(usize),
     TagCheck(String),
     Item,
     Tool,

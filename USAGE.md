@@ -141,7 +141,12 @@ bashrc = [
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
   ". \"$HOME/.cargo/env\"",
 ]
+npmrc = [
+  "registry=https://mirror.com/npm/",
+]
 ```
+
+`cargo_config` 写入 Cargo 配置，`bashrc` 写入 Linux 的 `~/.bashrc`，`npmrc` 追加写入用户级 `.npmrc`。APT 镜像使用独立的 `[apt_mirror]`，因为它需要写入系统 APT source 文件。
 
 `[preinstall.<profile>.<platform>]` 用于工具安装前的命令：
 
@@ -168,6 +173,28 @@ signed_by = "/usr/share/keyrings/internal-archive-keyring.gpg"
 source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
 ```
 
+如果同一系统的不同架构要使用不同镜像，可以把公共字段放在 `[apt_mirror]`，差异字段放在 `[[apt_mirror.rules]]`：
+
+```toml
+[apt_mirror]
+suites = ["{codename}", "{codename}-updates", "{codename}-security"]
+components = ["main", "restricted", "universe", "multiverse"]
+architectures = ["{architecture}"]
+source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+
+[[apt_mirror.rules]]
+distribution = "ubuntu"
+architecture = "amd64"
+uri = "https://mirror-amd64.example/ubuntu"
+
+[[apt_mirror.rules]]
+distribution = "ubuntu"
+architecture = "arm64"
+uri = "https://mirror-arm64.example/ubuntu"
+```
+
+规则按书写顺序匹配，命中第一条即使用。`distribution`、`codename`、`architecture` 都是可选匹配条件；未在 rule 中填写的 `suites/components/architectures/signed_by/source_file` 会继承 `[apt_mirror]` 中的默认值。
+
 变量：
 
 | 变量 | 来源 |
@@ -183,6 +210,8 @@ rsenvforge apt-mirror show --config /path/to/rsenvforge.toml
 rsenvforge apt-mirror check --config /path/to/rsenvforge.toml
 sudo rsenvforge apt-mirror apply --config /path/to/rsenvforge.toml
 ```
+
+Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，也会在执行安装前准备命令之前询问是否使用内部 APT 镜像。确认后会先验证镜像，再写入 source 文件；拒绝后继续普通安装流程。
 
 `show` 不执行网络请求；`check` 将生成的 Deb822 源文件写入临时目录，再让 `apt-get update` 仅读取该临时源和临时索引目录，验证结束后删除临时目录；`apply` 先完成相同验证，再等待输入 `Y`，随后写入 `source_file`。
 

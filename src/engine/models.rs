@@ -189,12 +189,27 @@ pub struct AptMirrorDef {
     pub architectures: Vec<String>,
     pub signed_by: Option<String>,
     pub source_file: Option<String>,
+    pub rules: Vec<AptMirrorRuleDef>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AptMirrorRuleDef {
+    pub distribution: Option<String>,
+    pub codename: Option<String>,
+    pub architecture: Option<String>,
+    pub uri: Option<String>,
+    pub suites: Vec<String>,
+    pub components: Vec<String>,
+    pub architectures: Vec<String>,
+    pub signed_by: Option<String>,
+    pub source_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EnvironmentDef {
     pub cargo_config: Vec<String>,
     pub bashrc: Vec<String>,
+    pub npmrc: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

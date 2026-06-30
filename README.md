@@ -121,6 +121,36 @@ sudo rsenvforge apt-mirror apply
 
 `show` 只显示根据 `/etc/os-release` 和 `dpkg --print-architecture` 生成的候选 Deb822 源文件。`check` 使用临时目录运行 APT 验证，不写入 `/etc`，临时文件会在结束后删除。`apply` 会先执行相同验证，得到 `Y` 确认后写入 `source_file`，默认是 `/etc/apt/sources.list.d/rsenvforge.sources`。
 
+`[apt_mirror]` 支持 `{distribution}`、`{codename}`、`{architecture}` 变量，也支持按系统和架构选择镜像：
+
+```toml
+[apt_mirror]
+suites = ["{codename}", "{codename}-updates", "{codename}-security"]
+components = ["main", "restricted", "universe", "multiverse"]
+architectures = ["{architecture}"]
+source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+
+[[apt_mirror.rules]]
+distribution = "ubuntu"
+architecture = "amd64"
+uri = "https://mirror-amd64.example/ubuntu"
+
+[[apt_mirror.rules]]
+distribution = "ubuntu"
+architecture = "arm64"
+uri = "https://mirror-arm64.example/ubuntu"
+```
+
+规则按书写顺序匹配，命中第一条即使用；未在 rule 中填写的 `suites/components/architectures/signed_by/source_file` 会继承 `[apt_mirror]` 中的默认值。
+
+Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安装前准备命令之前询问：
+
+```text
+是否使用内部apt镜像？如果未配置proxy，不使用apt镜像可能导致部分工具安装失败。(Y/N)
+```
+
+输入 `Y` 或 `y` 后会先验证镜像，再写入 APT source 文件；其他输入会跳过 APT 镜像配置并继续安装。
+
 该功能不会删除、禁用或替换已有系统源；若要让内网镜像成为唯一来源，应在确认镜像可用后自行按运维策略停用原有源。不会关闭 APT 签名校验，`signed_by` 指向的内部镜像 GPG key 文件必须已存在。
 
 ## 安装等级
@@ -203,6 +233,9 @@ cargo_config = [
 bashrc = [
   ". \"$HOME/.cargo/env\"",
 ]
+npmrc = [
+  "registry=https://mirror.com/npm/",
+]
 
 [tag_checks.github]
 check_windows = "git ls-remote https://github.com/github/gitignore.git HEAD"
@@ -254,8 +287,9 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 | --- | --- |
 | `cargo_config` | 写入 `$CARGO_HOME/config.toml`；未设置 `CARGO_HOME` 时写入 `~/.cargo/config.toml` |
 | `bashrc` | Linux 下 rust 安装完成后追加到 `~/.bashrc` |
+| `npmrc` | 追加写入用户级 `.npmrc`，用于 npm registry、strict-ssl 等配置 |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust`，在 rust 安装完成后会再次确保这些环境文件已经写入。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust`，在 rust 安装完成后会再次确保这些环境文件已经写入。
 
 Linux 下安装命令优先使用 `bash -lc` 执行，因此可以在 `preinstall` 中使用 `source ~/.bashrc` 让刚写入的环境变量对后续命令生效；如果系统没有 `bash`，会回退到 `sh -c`，此时应使用 `. ~/.bashrc`。
 
@@ -269,6 +303,8 @@ cargo_config = [
   "registry = \"sparse+https://example.internal/crates.io-index/\"",
 ]
 ```
+
+APT 镜像不写在 `[environment]` 中，而是使用独立的 `[apt_mirror]`，因为它需要生成系统源文件。可以通过 `rsenvforge apt-mirror apply` 手动写入，也可以在 Linux `install` 流程中按提示确认后写入。
 
 ## 工具配置
 
