@@ -415,6 +415,44 @@ fn confirm_install() -> Result<bool, ForgeError> {
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
+#[derive(Default)]
+struct InstallSession {
+    installed_tools: BTreeSet<String>,
+}
+
+impl InstallSession {
+    fn mark_installed(&mut self, name: &str) {
+        self.installed_tools.insert(name.to_string());
+    }
+
+    fn installed_nvm_this_run(&self) -> bool {
+        self.installed_tools.contains("nvm")
+    }
+}
+
+fn command_for_install_session(command: &str, session: &InstallSession) -> String {
+    command_for_install_session_on_platform(command, session, cfg!(target_os = "linux"))
+}
+
+fn command_for_install_session_on_platform(
+    command: &str,
+    session: &InstallSession,
+    is_linux: bool,
+) -> String {
+    if !is_linux || !session.installed_nvm_this_run() || !command_uses_nvm(command) {
+        return command.to_string();
+    }
+    format!(
+        "export NVM_DIR=\"${{NVM_DIR:-$HOME/.nvm}}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"; {command}"
+    )
+}
+
+fn command_uses_nvm(command: &str) -> bool {
+    command
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '-'))
+        .any(|part| part == "nvm")
+}
+
 fn process_profile_tools(
     config: &InstallConfig,
     profile: Profile,
@@ -438,9 +476,10 @@ fn process_profile_tools(
         .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
     let tools = tools_for_names(config, &profile_def.tools)?;
     let mut passed_tags = BTreeSet::new();
+    let mut session = InstallSession::default();
     for tool in tools {
         if missing_names.contains(tool.name.as_str()) {
-            install_tool(config, &tool, &mut passed_tags)?;
+            install_tool(config, &tool, &mut passed_tags, &mut session)?;
             continue;
         }
 
@@ -449,7 +488,7 @@ fn process_profile_tools(
         }
 
         if confirm_run_installed_tool_post(&tool.name)? {
-            run_tool_post_install(&tool)?;
+            run_tool_post_install(&tool, &session)?;
         } else {
             println!("已跳过工具安装后命令：{}", tool.name);
         }
@@ -461,16 +500,18 @@ fn install_tool(
     config: &InstallConfig,
     tool: &ToolDef,
     passed_tags: &mut BTreeSet<String>,
+    session: &mut InstallSession,
 ) -> Result<(), ForgeError> {
     let Some(command) = tool.install_command() else {
         return Ok(());
     };
-    if !run_tool_tag_checks(config, tool, passed_tags)? {
+    if !run_tool_tag_checks(config, tool, passed_tags, session)? {
         println!("已跳过工具：{}", tool.name);
         return Ok(());
     }
     println!("开始安装工具：{}", tool.name);
-    match run_shell_labeled(&tool.name, command) {
+    let command = command_for_install_session(command, session);
+    match run_shell_labeled(&tool.name, &command) {
         Ok(ShellRunStatus::Completed) => {}
         Ok(ShellRunStatus::Skipped) => {
             println!("已跳过工具：{}", tool.name);
@@ -488,7 +529,8 @@ fn install_tool(
             )));
         }
     }
-    run_tool_post_install(tool)?;
+    session.mark_installed(&tool.name);
+    run_tool_post_install(tool, session)?;
     println!("工具 {} 安装完成。", tool.name);
     Ok(())
 }
@@ -497,6 +539,7 @@ fn run_tool_tag_checks(
     config: &InstallConfig,
     tool: &ToolDef,
     passed_tags: &mut BTreeSet<String>,
+    session: &InstallSession,
 ) -> Result<bool, ForgeError> {
     for tag in &tool.tags {
         if passed_tags.contains(tag) {
@@ -534,7 +577,8 @@ fn run_tool_tag_checks(
         }
 
         println!("执行工具 {} 的标签检查：{}", tool.name, tag);
-        match run_shell_capture(command) {
+        let command = command_for_install_session(command, session);
+        match run_shell_capture(&command) {
             Ok(output) => {
                 let version = first_line(output);
                 if version.trim().is_empty() {
@@ -559,12 +603,13 @@ fn run_tool_tag_checks(
     Ok(true)
 }
 
-fn run_tool_post_install(tool: &ToolDef) -> Result<(), ForgeError> {
+fn run_tool_post_install(tool: &ToolDef, session: &InstallSession) -> Result<(), ForgeError> {
     let Some(post_command) = tool.post_install_command() else {
         return Ok(());
     };
     println!("开始运行工具安装后命令：{}", tool.name);
-    match run_shell_labeled(&format!("{} 安装后命令", tool.name), post_command) {
+    let post_command = command_for_install_session(post_command, session);
+    match run_shell_labeled(&format!("{} 安装后命令", tool.name), &post_command) {
         Ok(ShellRunStatus::Completed) => {}
         Ok(ShellRunStatus::Skipped) => {
             println!("已跳过工具安装后命令：{}", tool.name);
@@ -976,4 +1021,38 @@ fn agents_from_targets(targets: &[PathBuf]) -> Vec<Agent> {
         agents.push(Agent::Claude);
     }
     agents
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{command_for_install_session_on_platform, command_uses_nvm, InstallSession};
+
+    #[test]
+    fn only_wraps_nvm_commands_after_nvm_is_installed_by_session() {
+        let command = "nvm install 20.17.0 && nvm use 20.17.0";
+        let mut session = InstallSession::default();
+
+        assert_eq!(
+            command_for_install_session_on_platform(command, &session, true),
+            command
+        );
+
+        session.mark_installed("nvm");
+        let wrapped = command_for_install_session_on_platform(command, &session, true);
+        assert!(wrapped.contains("NVM_DIR"));
+        assert!(wrapped.ends_with(command));
+
+        assert_eq!(
+            command_for_install_session_on_platform(command, &session, false),
+            command
+        );
+    }
+
+    #[test]
+    fn detects_nvm_as_a_shell_command_token() {
+        assert!(command_uses_nvm("nvm --version"));
+        assert!(command_uses_nvm("nvm install 20.17.0"));
+        assert!(!command_uses_nvm("echo NVM_NODEJS_ORG_MIRROR"));
+        assert!(!command_uses_nvm("echo my-nvm-helper"));
+    }
 }

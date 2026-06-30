@@ -29,15 +29,16 @@ items = []
 tools = [
   "rust-build-base",
   "rust",
-  "nvm",
   "nodejs",
 ]
 skills = []
 items = []
 
-# full 暂无工具。
 [profiles.full]
-tools = []
+tools = [
+  "nvm",
+  "gitnexus",
+]
 skills = []
 items = []
 
@@ -135,6 +136,10 @@ check_linux = "git ls-remote https://github.com/github/gitignore.git HEAD"
 check_windows = "npm --version"
 check_linux = "npm --version"
 
+[tag_checks.node20]
+check_windows = "powershell -NoProfile -Command \"node -e \\\"process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)\\\"\""
+check_linux = "node -e 'process.exit(Number(process.versions.node.split(\".\")[0]) >= 20 ? 0 : 1)'"
+
 # 镜像标签不会自动绑定到工具。需要时请在对应 [[tools]] 中显式填写，
 # 例如：tags = ["cargo-mirror"]。
 
@@ -152,7 +157,7 @@ check_linux = "cargo install --list"
 
 [tag_checks.nvm-mirror]
 check_windows = "powershell -NoProfile -Command \"nvm version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $root = if ($env:NVM_HOME) { $env:NVM_HOME } else { Join-Path $env:APPDATA 'nvm' }; $settings = Join-Path $root 'settings.txt'; if (!(Test-Path $settings)) { exit 1 }; $line = Select-String -Path $settings -Pattern '^node_mirror:\\s*(.+)$' | Select-Object -First 1; if ($null -eq $line) { exit 1 }; $url = $line.Matches[0].Groups[1].Value.Trim().TrimEnd('/'); curl.exe -fsS --connect-timeout 10 ($url + '/index.tab') > $null; exit $LASTEXITCODE\""
-check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
+check_linux = "nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
 
 [tag_checks.apt-mirror]
 check_windows = "0"
@@ -307,11 +312,18 @@ install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/n
 
 [[tools]]
 name = "nodejs"
-tags = ["nvm-mirror"]
-check_windows = "node --version | findstr /C:\"v20.17.\" && npm --version"
-check_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm current | grep '^v20\\.17\\.' && node --version && npm --version"
+check_windows = "node --version && npm --version"
+check_linux = "node --version && npm --version"
 install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
-install_linux = ". \"$HOME/.nvm/nvm.sh\" && nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0"
+install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
+
+[[tools]]
+name = "gitnexus"
+tags = ["node20", "npm-mirror"]
+check_windows = "gitnexus --version"
+check_linux = "gitnexus --version"
+install_windows = "npm install -g gitnexus"
+install_linux = "npm install -g gitnexus"
 
 [[tools]]
 name = "cpp2rust-demo"

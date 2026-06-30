@@ -146,7 +146,7 @@ mod tests {
         let light = &config.profiles["light"].tools;
         let standard = &config.profiles["standard"].tools;
         let full = &config.profiles["full"].tools;
-        assert_eq!(full, &Vec::<String>::new());
+        assert_eq!(full, &vec!["nvm".to_string(), "gitnexus".to_string()]);
         assert!(light.contains(&"cargo-llvm-cov".to_string()));
         for tool in [
             "cargo-llvm-cov",
@@ -170,9 +170,11 @@ mod tests {
             assert!(light.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
         }
-        for tool in ["rust-build-base", "rust", "nvm", "nodejs"] {
+        for tool in ["rust-build-base", "rust", "nodejs"] {
             assert!(standard.contains(&tool.to_string()));
         }
+        assert!(!standard.contains(&"nvm".to_string()));
+        assert!(!standard.contains(&"gitnexus".to_string()));
     }
 
     #[test]
@@ -183,6 +185,7 @@ mod tests {
             "cargo-mirror",
             "cargo-install",
             "nvm-mirror",
+            "node20",
             "apt-mirror",
             "npm-mirror",
         ] {
@@ -226,11 +229,16 @@ mod tests {
             .iter()
             .find(|candidate| candidate.name == "nodejs")
             .unwrap();
-        assert_eq!(nodejs.tags, vec!["nvm-mirror".to_string()]);
-        assert!(config
+        assert!(nodejs.tags.is_empty());
+        let gitnexus = config
             .tools
             .iter()
-            .all(|tool| tool.tags.iter().all(|tag| tag != "npm-mirror")));
+            .find(|candidate| candidate.name == "gitnexus")
+            .unwrap();
+        assert_eq!(
+            gitnexus.tags,
+            vec!["node20".to_string(), "npm-mirror".to_string()]
+        );
     }
 
     #[test]

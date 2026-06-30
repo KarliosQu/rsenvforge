@@ -61,12 +61,12 @@ skills = []
 items = []
 
 [profiles.standard]
-tools = ["rust", "nvm", "nodejs"]
+tools = ["rust", "nodejs"]
 skills = []
 items = []
 
 [profiles.full]
-tools = []
+tools = ["nvm", "gitnexus"]
 skills = []
 items = []
 ```
@@ -121,10 +121,11 @@ check_linux = "git ls-remote https://github.com/example/project.git HEAD"
 | `cargo-mirror` | 检查 Cargo 配置与 registry 查询。 |
 | `rustup-mirror` | 检查 `RUSTUP_DIST_SERVER` 与 stable channel。 |
 | `nvm-mirror` | 检查 Node 镜像与 NVM 查询。 |
+| `node20` | 检查 Node.js 主版本是否 >= 20。 |
 | `npm-mirror` | 检查 npm registry 与 `npm ping`。 |
 | `apt-mirror` | Linux 下临时验证 APT 源；Windows 不支持。 |
 
-标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install`、`rustup` 与 `nvm` 安装命令绑定了相应检查。
+标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install`、`rustup` 与 `gitnexus` 的 npm 安装命令绑定了相应检查。
 
 ## 环境与预安装
 
@@ -201,4 +202,4 @@ sudo rsenvforge apt-mirror apply --config /path/to/rsenvforge.toml
 
 **为什么工具安装前被标签检查阻止？**
 
-标签验证的是安装前提。例如 `cargo-install` 要求 Cargo 已经可用，`nvm-mirror` 要求 NVM 已经可用。可以修复前提条件，或在提示时选择跳过当前工具。标签由配置控制，可以按实际环境调整。
+标签验证的是安装前提。例如 `cargo-install` 要求 Cargo 已经可用，`node20` 要求 Node.js 主版本至少为 20。可以修复前提条件，或在提示时选择跳过当前工具。标签由配置控制，可以按实际环境调整。
