@@ -294,6 +294,16 @@ mod tests {
     }
 
     #[test]
+    fn builtin_config_puts_environment_and_preinstall_first() {
+        let environment_index = BUILTIN_CONFIG.find("[environment]").unwrap();
+        let preinstall_index = BUILTIN_CONFIG.find("[preinstall.light.linux]").unwrap();
+        let profiles_index = BUILTIN_CONFIG.find("[profiles.light]").unwrap();
+
+        assert!(environment_index < preinstall_index);
+        assert!(preinstall_index < profiles_index);
+    }
+
+    #[test]
     fn builtin_tag_checks_match_install_commands() {
         let config = parse_config(BUILTIN_CONFIG).unwrap();
         for tag in [
@@ -337,6 +347,11 @@ mod tests {
             .find(|candidate| candidate.name == "rust-toolchain")
             .unwrap();
         assert!(rust.tags.is_empty());
+        assert!(rust
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("RSENVFORGE_RUSTUP_INIT_URL"));
         for tool in ["rust-analyzer", "miri"] {
             let tool = config
                 .tools

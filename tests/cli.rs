@@ -284,6 +284,8 @@ fn preinstall_commands_are_profile_scoped() {
     assert_success(&standard);
     let standard_stdout = String::from_utf8_lossy(&standard.stdout);
     assert!(standard_stdout.contains("安装前置命令"));
+    assert!(standard_stdout.contains("Step 1/2：运行 安装前置命令"));
+    assert!(standard_stdout.contains("Step 2/2：安装工具 missing-demo"));
     assert_eq!(standard_stdout.matches("安装前置命令").count(), 1);
     assert!(!standard_stdout.contains("echo preinstall-standard"));
     assert!(!standard_stdout.contains("echo preinstall-second"));
@@ -487,6 +489,50 @@ fn install_declines_when_user_answers_n() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Y/N"));
     assert!(!home.join("registry.tsv").exists());
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn install_defaults_to_all_selected_and_prints_steps_in_non_tty() {
+    let temp = test_dir("install_defaults_to_all_selected_and_prints_steps_in_non_tty");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["step-demo"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["step-demo"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = ["step-demo"]
+        skills = []
+        items = []
+        [[tools]]
+        name = "step-demo"
+        check = "definitely-missing-rsenvforge-step-demo --version"
+        install = "echo install-step-demo"
+        "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args(["install", "light", "--config", config.to_str().unwrap()]),
+        "Y\n",
+    );
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Step 1/1：安装工具 step-demo"));
+    assert!(stdout.contains("开始安装工具：step-demo"));
 
     fs::remove_dir_all(temp).unwrap();
 }

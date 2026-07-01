@@ -12,3 +12,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "rsenvforge"
 path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.28"

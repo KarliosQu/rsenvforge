@@ -10,6 +10,7 @@ pub(crate) fn apply_install_start_environment(config: &InstallConfig) -> Result<
     write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
     append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
     if cfg!(target_os = "linux") {
+        apply_export_lines_to_process(&config.environment.bashrc);
         append_lines_if_missing(
             "bashrc",
             &home_dir().join(".bashrc"),
@@ -25,6 +26,7 @@ pub(crate) fn apply_after_rust_install_environment(
     write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
     append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
     if cfg!(target_os = "linux") {
+        apply_export_lines_to_process(&config.environment.bashrc);
         append_lines_if_missing(
             "bashrc",
             &home_dir().join(".bashrc"),
@@ -33,6 +35,45 @@ pub(crate) fn apply_after_rust_install_environment(
     }
     refresh_rust_process_environment();
     Ok(())
+}
+
+fn apply_export_lines_to_process(lines: &[String]) {
+    for line in lines {
+        if let Some((name, value)) = parse_export_line(line) {
+            env::set_var(name, value);
+        }
+    }
+}
+
+fn parse_export_line(line: &str) -> Option<(&str, String)> {
+    let line = line.trim();
+    let rest = line.strip_prefix("export ")?;
+    let (name, value) = rest.split_once('=')?;
+    let name = name.trim();
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric())
+        || name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((name, unquote_export_value(value.trim()).to_string()))
+}
+
+fn unquote_export_value(value: &str) -> &str {
+    value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
+        .unwrap_or(value)
 }
 
 pub(crate) fn refresh_rust_process_environment() {
@@ -238,7 +279,7 @@ fn write_text(path: &Path, contents: &str) -> Result<(), ForgeError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_lines_if_missing, refresh_node_process_environment,
+        append_lines_if_missing, apply_export_lines_to_process, refresh_node_process_environment,
         refresh_rust_process_environment, write_cargo_config_if_empty,
     };
     use std::sync::Mutex;
@@ -327,6 +368,29 @@ mod tests {
         );
 
         fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn applies_export_lines_to_current_process() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let old_url = env::var_os("RSENVFORGE_RUSTUP_INIT_URL");
+        let old_quoted = env::var_os("RSENVFORGE_QUOTED_VALUE");
+
+        apply_export_lines_to_process(&[
+            "export RSENVFORGE_RUSTUP_INIT_URL=https://mirror.example/rustup-init.sh".to_string(),
+            "export RSENVFORGE_QUOTED_VALUE=\"hello world\"".to_string(),
+            "export 1INVALID=ignored".to_string(),
+        ]);
+
+        assert_eq!(
+            env::var("RSENVFORGE_RUSTUP_INIT_URL").unwrap(),
+            "https://mirror.example/rustup-init.sh"
+        );
+        assert_eq!(env::var("RSENVFORGE_QUOTED_VALUE").unwrap(), "hello world");
+        assert!(env::var_os("1INVALID").is_none());
+
+        restore_env("RSENVFORGE_RUSTUP_INIT_URL", old_url);
+        restore_env("RSENVFORGE_QUOTED_VALUE", old_quoted);
     }
 
     #[test]

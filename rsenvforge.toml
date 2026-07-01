@@ -3,6 +3,49 @@
 # 安装等级会按 light -> standard -> full 累积。
 # standard 会包含 light；full 会包含 light + standard + full。
 
+# [environment] 是实际会写入本机环境文件的配置区。
+# cargo_config 会写入 Cargo config.toml；bashrc 会追加到 Linux ~/.bashrc；
+# npmrc 会追加到用户级 .npmrc。下面的镜像行默认保持注释，不参与安装。
+[environment]
+cargo_config = [
+  "[source.crates-io]",
+  "replace-with = \"rsproxy\"",
+  "[source.rsproxy]",
+  "registry = \"sparse+https://rsproxy.cn/index/\"",
+  "[net]",
+  "git-fetch-with-cli = true",
+]
+bashrc = [
+  "export RSENVFORGE_RUSTUP_INIT_URL=https://rsproxy.cn/rustup-init.sh",
+  "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
+  "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
+  # NVM/Node.js 镜像示例：需要使用 nvm 下载镜像时取消注释，并改成内网地址。
+  # "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
+  ". \"$HOME/.cargo/env\"",
+]
+npmrc = [
+  "registry=https://registry.npmmirror.com/",
+]
+
+# 分级安装前置命令同样会按等级累积执行。
+[preinstall.light.linux]
+commands = []
+
+[preinstall.light.windows]
+commands = []
+
+[preinstall.standard.linux]
+commands = []
+
+[preinstall.standard.windows]
+commands = []
+
+[preinstall.full.linux]
+commands = []
+
+[preinstall.full.windows]
+commands = []
+
 [profiles.light]
 tools = [
   "cargo-llvm-cov",
@@ -43,48 +86,6 @@ items = []
 tools = []
 skills = []
 items = []
-
-# 分级安装前置命令同样会按等级累积执行。
-[preinstall.light.linux]
-commands = []
-
-[preinstall.light.windows]
-commands = []
-
-[preinstall.standard.linux]
-commands = []
-
-[preinstall.standard.windows]
-commands = []
-
-[preinstall.full.linux]
-commands = []
-
-[preinstall.full.windows]
-commands = []
-
-# [environment] 是实际会写入本机环境文件的配置区。
-# cargo_config 会写入 Cargo config.toml；bashrc 会追加到 Linux ~/.bashrc；
-# npmrc 会追加到用户级 .npmrc。下面的镜像行默认保持注释，不参与安装。
-[environment]
-cargo_config = [
-  "[source.crates-io]",
-  "replace-with = \"rsproxy\"",
-  "[source.rsproxy]",
-  "registry = \"sparse+https://rsproxy.cn/index/\"",
-  "[net]",
-  "git-fetch-with-cli = true",
-]
-bashrc = [
-  "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
-  "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
-  # NVM/Node.js 镜像示例：需要使用 nvm 下载镜像时取消注释，并改成内网地址。
-  # "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
-  ". \"$HOME/.cargo/env\"",
-]
-npmrc = [
-  "registry=https://registry.npmmirror.com/",
-]
 
 # 内部 APT 镜像配置独立于 [environment]，因为它会生成系统 APT source 文件。
 # 以下内容全部保持注释状态，不参与当前测试或安装；需要启用时请选择一种方式取消注释。
@@ -220,7 +221,7 @@ tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
 install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
-install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl -ssf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
+install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl -ssf \"${RSENVFORGE_RUSTUP_INIT_URL:-https://rsproxy.cn/rustup-init.sh}\" | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
 
 [[tools]]
 name = "cargo-llvm-cov"

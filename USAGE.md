@@ -36,7 +36,9 @@ Linux 使用相同的 Cargo 命令。需要配置 APT 源时，请在 Linux 或 
 
 `install`、`install-skill`、`install-crate`、`update` 和 `remove` 支持 `--force` 的范围以各自命令帮助为准。`--force` 不等于自动确认安装；普通 `install` 仍会等待 `Y/N`。
 
-安装某个工具时，界面会持续显示“安装过程中可输入 T 后回车，强制跳过当前工具”。在命令仍在运行时输入 `T` 或 `t` 后回车，rsenvforge 会终止当前安装命令、跳过该工具，并继续处理后续工具。
+交互终端中，`install` 会在确认安装前显示可勾选安装列表。默认全选；使用方向键移动，空格切换，`Enter` 确认，`A` 全选/全不选，`Esc` 或 `Q` 取消。脚本或管道环境中会保留 `Y/N` 确认并默认全选。
+
+安装某个工具时，界面会持续显示“安装过程中可输入 T 后回车，强制跳过当前工具”。在命令仍在运行时输入 `T` 或 `t` 后回车，rsenvforge 会终止当前安装命令、跳过该工具，并继续处理后续工具。APT 镜像验证/写入、安装前置命令和组件安装开始前都会输出 `Step 当前/总数`，用于显示整体安装进度。
 
 ## 配置文件发现
 
@@ -138,6 +140,7 @@ cargo_config = [
   "git-fetch-with-cli = true",
 ]
 bashrc = [
+  "export RSENVFORGE_RUSTUP_INIT_URL=https://rustup.internal.example/rustup-init.sh",
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
   ". \"$HOME/.cargo/env\"",
 ]
@@ -146,7 +149,7 @@ npmrc = [
 ]
 ```
 
-`cargo_config` 写入 Cargo 配置，`bashrc` 写入 Linux 的 `~/.bashrc`，`npmrc` 追加写入用户级 `.npmrc`。APT 镜像使用独立的 `[apt_mirror]`，因为它需要写入系统 APT source 文件。
+`cargo_config` 写入 Cargo 配置，`bashrc` 写入 Linux 的 `~/.bashrc`，`npmrc` 追加写入用户级 `.npmrc`。`bashrc` 中的 `export KEY=value` 会在当前安装进程中立即生效；默认 `rust-toolchain` 使用 `RSENVFORGE_RUSTUP_INIT_URL` 作为 rustup-init 下载地址。APT 镜像使用独立的 `[apt_mirror]`，因为它需要写入系统 APT source 文件。
 
 `[preinstall.<profile>.<platform>]` 用于工具安装前的命令：
 

@@ -1,7 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsStr;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+
+use crossterm::cursor;
+use crossterm::event::{self, Event, KeyCode};
+use crossterm::execute;
+use crossterm::terminal::{self, ClearType};
 
 use super::apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror};
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
@@ -42,7 +48,15 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
     let missing_skills = preview.missing_skills();
     if missing_tools.is_empty() && missing_skills.is_empty() {
         println!("所有工具和 skill 均已安装。");
-        process_profile_tools(&config, options.profile, &preview)?;
+        let selection = InstallSelection::all(&preview);
+        let mut progress = InstallProgress::new(0);
+        process_profile_tools(
+            &config,
+            options.profile,
+            &preview,
+            &selection,
+            &mut progress,
+        )?;
         let entries = install_legacy_items(&config, options)?;
         let final_preview = preview_install(&config, options.profile)?;
         print_install_complete(&final_preview);
@@ -73,8 +87,9 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         )));
     }
 
-    if !confirm_install()? {
-        println!("用户取消安装。");
+    let selection = select_install_components(&preview)?;
+    if selection.is_empty() {
+        println!("未选择任何组件，取消安装。");
         return Ok(InstallReport {
             entries: Vec::new(),
             final_preview: preview,
@@ -85,13 +100,39 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         .tools
         .iter()
         .any(|status| is_rust_toolchain(&status.name) && status.supported && !status.installed);
-    maybe_apply_apt_mirror_for_install(&config)?;
-    run_preinstall_commands(&config, options.profile, &preview)?;
-    process_profile_tools(&config, options.profile, &preview)?;
+    let use_apt_mirror = confirm_apt_mirror_for_install(&config)?;
+    let preinstall_steps = preinstall_step_count(&config, options.profile, &preview, &selection);
+    let mut progress = InstallProgress::new(
+        selection.step_count() + preinstall_steps + usize::from(use_apt_mirror),
+    );
+    if use_apt_mirror {
+        apply_apt_mirror_for_install(&config, &mut progress)?;
+    }
+    run_preinstall_commands(
+        &config,
+        options.profile,
+        &preview,
+        &selection,
+        &mut progress,
+    )?;
+    process_profile_tools(
+        &config,
+        options.profile,
+        &preview,
+        &selection,
+        &mut progress,
+    )?;
     if rust_missing {
         apply_after_rust_install_environment(&config)?;
     }
-    install_missing_skills(&config, options.profile, &preview, options.force)?;
+    install_missing_skills(
+        &config,
+        options.profile,
+        &preview,
+        &selection,
+        options.force,
+        &mut progress,
+    )?;
     let entries = install_legacy_items(&config, options)?;
     let final_preview = preview_install(&config, options.profile)?;
     print_install_complete(&final_preview);
@@ -420,20 +461,246 @@ fn confirm_install() -> Result<bool, ForgeError> {
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
-fn maybe_apply_apt_mirror_for_install(config: &InstallConfig) -> Result<(), ForgeError> {
-    if !cfg!(target_os = "linux")
-        || (config.apt_mirror.uri.is_none() && config.apt_mirror.rules.is_empty())
-    {
-        return Ok(());
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InstallSelection {
+    tools: BTreeSet<String>,
+    skills: BTreeSet<String>,
+}
+
+impl InstallSelection {
+    fn all(preview: &InstallPreview) -> Self {
+        Self {
+            tools: preview
+                .missing_tools()
+                .into_iter()
+                .filter(|status| status.installable)
+                .map(|status| status.name.clone())
+                .collect(),
+            skills: preview
+                .missing_skills()
+                .into_iter()
+                .map(|status| skill_selection_key(&status.name, status.agent))
+                .collect(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.tools.is_empty() && self.skills.is_empty()
+    }
+
+    fn includes_tool(&self, name: &str) -> bool {
+        self.tools.contains(name)
+    }
+
+    fn includes_skill(&self, name: &str, agent: Agent) -> bool {
+        self.skills.contains(&skill_selection_key(name, agent))
+    }
+
+    fn step_count(&self) -> usize {
+        self.tools.len() + self.skills.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SelectionKind {
+    Tool(String),
+    Skill(String, Agent),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SelectionChoice {
+    kind: SelectionKind,
+    label: String,
+    selected: bool,
+}
+
+fn select_install_components(preview: &InstallPreview) -> Result<InstallSelection, ForgeError> {
+    let mut choices = selectable_install_choices(preview);
+    if choices.is_empty() {
+        return Ok(InstallSelection::all(preview));
+    }
+
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        if confirm_install()? {
+            return Ok(InstallSelection::all(preview));
+        }
+        return Ok(InstallSelection {
+            tools: BTreeSet::new(),
+            skills: BTreeSet::new(),
+        });
+    }
+
+    run_interactive_selection_menu(&mut choices)
+}
+
+fn selectable_install_choices(preview: &InstallPreview) -> Vec<SelectionChoice> {
+    let mut choices = Vec::new();
+    choices.extend(
+        preview
+            .missing_tools()
+            .into_iter()
+            .filter(|status| status.installable)
+            .map(|status| SelectionChoice {
+                kind: SelectionKind::Tool(status.name.clone()),
+                label: format!("工具：{}", status.name),
+                selected: true,
+            }),
+    );
+    choices.extend(
+        preview
+            .missing_skills()
+            .into_iter()
+            .map(|status| SelectionChoice {
+                kind: SelectionKind::Skill(status.name.clone(), status.agent),
+                label: format!("Skill：{} -> {}", status.name, status.agent.as_str()),
+                selected: true,
+            }),
+    );
+    choices
+}
+
+fn run_interactive_selection_menu(
+    choices: &mut [SelectionChoice],
+) -> Result<InstallSelection, ForgeError> {
+    let mut stdout = io::stdout();
+    terminal::enable_raw_mode()
+        .map_err(|error| ForgeError::Command(format!("无法启用交互选择模式：{error}")))?;
+    execute!(stdout, cursor::Hide, terminal::EnterAlternateScreen)
+        .map_err(|error| ForgeError::Command(format!("无法绘制安装选择菜单：{error}")))?;
+
+    let result = run_selection_event_loop(choices, &mut stdout);
+
+    let _ = execute!(stdout, terminal::LeaveAlternateScreen, cursor::Show);
+    let _ = terminal::disable_raw_mode();
+
+    let selection = result?;
+    if selection.is_empty() {
+        println!("已选择安装组件：无");
+    } else {
+        println!("已选择安装组件：{}", selection.step_count());
+    }
+    Ok(selection)
+}
+
+fn run_selection_event_loop(
+    choices: &mut [SelectionChoice],
+    stdout: &mut io::Stdout,
+) -> Result<InstallSelection, ForgeError> {
+    let mut cursor_index = 0usize;
+    loop {
+        render_selection_menu(choices, cursor_index, stdout)?;
+        let event = event::read()
+            .map_err(|error| ForgeError::Command(format!("读取安装选择输入失败：{error}")))?;
+        let Event::Key(key) = event else {
+            continue;
+        };
+        match key.code {
+            KeyCode::Up => cursor_index = cursor_index.saturating_sub(1),
+            KeyCode::Down => {
+                if cursor_index + 1 < choices.len() {
+                    cursor_index += 1;
+                }
+            }
+            KeyCode::Char(' ') => {
+                if let Some(choice) = choices.get_mut(cursor_index) {
+                    choice.selected = !choice.selected;
+                }
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') => {
+                let all_selected = choices.iter().all(|choice| choice.selected);
+                for choice in choices.iter_mut() {
+                    choice.selected = !all_selected;
+                }
+            }
+            KeyCode::Enter => return Ok(selection_from_choices(choices)),
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
+                for choice in choices.iter_mut() {
+                    choice.selected = false;
+                }
+                return Ok(selection_from_choices(choices));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn render_selection_menu(
+    choices: &[SelectionChoice],
+    cursor_index: usize,
+    stdout: &mut io::Stdout,
+) -> Result<(), ForgeError> {
+    execute!(
+        stdout,
+        cursor::MoveTo(0, 0),
+        terminal::Clear(ClearType::All)
+    )
+    .map_err(|error| ForgeError::Command(format!("绘制安装选择菜单失败：{error}")))?;
+    writeln!(
+        stdout,
+        "请选择本次要安装的组件（↑/↓移动，空格切换，A 全选/全不选，Enter 确认，Esc/Q 取消）"
+    )
+    .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
+    writeln!(stdout)
+        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
+    for (index, choice) in choices.iter().enumerate() {
+        let cursor = if index == cursor_index { ">" } else { " " };
+        let mark = if choice.selected { "x" } else { " " };
+        writeln!(stdout, "{cursor} [{mark}] {}", choice.label)
+            .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
+    }
+    stdout
+        .flush()
+        .map_err(|error| ForgeError::Command(format!("刷新安装选择菜单失败：{error}")))
+}
+
+fn selection_from_choices(choices: &[SelectionChoice]) -> InstallSelection {
+    let mut selection = InstallSelection {
+        tools: BTreeSet::new(),
+        skills: BTreeSet::new(),
+    };
+    for choice in choices.iter().filter(|choice| choice.selected) {
+        match &choice.kind {
+            SelectionKind::Tool(name) => {
+                selection.tools.insert(name.clone());
+            }
+            SelectionKind::Skill(name, agent) => {
+                selection.skills.insert(skill_selection_key(name, *agent));
+            }
+        }
+    }
+    selection
+}
+
+fn skill_selection_key(name: &str, agent: Agent) -> String {
+    format!("{name}\t{}", agent.as_str())
+}
+
+fn confirm_apt_mirror_for_install(config: &InstallConfig) -> Result<bool, ForgeError> {
+    if !apt_mirror_available_for_install(config) {
+        return Ok(false);
     }
 
     println!("是否使用内部apt镜像？如果未配置proxy，不使用apt镜像可能导致部分工具安装失败。(Y/N)");
     let answer = read_user_line()?;
     if !matches!(answer.trim(), "Y" | "y") {
         println!("已跳过内部 APT 镜像配置。");
-        return Ok(());
+        return Ok(false);
     }
+    Ok(true)
+}
 
+fn apt_mirror_available_for_install(config: &InstallConfig) -> bool {
+    cfg!(target_os = "linux")
+        && (config.apt_mirror.uri.is_some()
+            || !config.apt_mirror.lines.is_empty()
+            || !config.apt_mirror.rules.is_empty())
+}
+
+fn apply_apt_mirror_for_install(
+    config: &InstallConfig,
+    progress: &mut InstallProgress,
+) -> Result<(), ForgeError> {
+    progress.next("配置", "APT 镜像");
     let preview = apt_mirror_preview(config)?;
     println!("开始验证内部 APT 镜像，不会直接修改系统源文件。");
     println!("APT 镜像源文件：{}", preview.source_file.display());
@@ -507,11 +774,14 @@ fn process_profile_tools(
     config: &InstallConfig,
     profile: Profile,
     preview: &InstallPreview,
+    selection: &InstallSelection,
+    progress: &mut InstallProgress,
 ) -> Result<(), ForgeError> {
     let missing_names: BTreeSet<&str> = preview
         .missing_tools()
         .into_iter()
         .filter(|status| status.installable)
+        .filter(|status| selection.includes_tool(&status.name))
         .map(|status| status.name.as_str())
         .collect();
     let installed_names: BTreeSet<&str> = preview
@@ -526,6 +796,7 @@ fn process_profile_tools(
     let mut session = InstallSession::default();
     for tool in tools {
         if missing_names.contains(tool.name.as_str()) {
+            progress.next("安装工具", &tool.name);
             install_tool(config, &tool, &mut passed_tags, &mut session)?;
             continue;
         }
@@ -705,33 +976,78 @@ fn confirm_skip_tool_tag_check(name: &str) -> Result<bool, ForgeError> {
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
+struct InstallProgress {
+    current: usize,
+    total: usize,
+}
+
+impl InstallProgress {
+    fn new(total: usize) -> Self {
+        Self { current: 0, total }
+    }
+
+    fn next(&mut self, action: &str, name: &str) {
+        if self.total == 0 {
+            return;
+        }
+        self.current += 1;
+        println!("Step {}/{}：{} {}", self.current, self.total, action, name);
+    }
+}
+
 fn run_preinstall_commands(
     config: &InstallConfig,
     profile: Profile,
     preview: &InstallPreview,
+    selection: &InstallSelection,
+    progress: &mut InstallProgress,
 ) -> Result<(), ForgeError> {
-    let commands = config.preinstall.commands_for_current_platform(profile);
+    let commands = selected_preinstall_commands(config, profile, preview, selection);
     if commands.is_empty() {
         return Ok(());
     }
 
-    let missing_names: BTreeSet<&str> = preview
-        .missing_tools()
-        .into_iter()
-        .filter(|status| status.installable)
-        .map(|status| status.name.as_str())
-        .collect();
-    if missing_names.is_empty() {
-        return Ok(());
-    }
-
-    println!("安装前置命令");
+    progress.next("运行", "安装前置命令");
     for command in commands {
         if run_shell_labeled_quiet("安装前置命令", &command)? == ShellRunStatus::Skipped {
             println!("已跳过安装前置命令。");
         }
     }
     Ok(())
+}
+
+fn preinstall_step_count(
+    config: &InstallConfig,
+    profile: Profile,
+    preview: &InstallPreview,
+    selection: &InstallSelection,
+) -> usize {
+    usize::from(!selected_preinstall_commands(config, profile, preview, selection).is_empty())
+}
+
+fn selected_preinstall_commands(
+    config: &InstallConfig,
+    profile: Profile,
+    preview: &InstallPreview,
+    selection: &InstallSelection,
+) -> Vec<String> {
+    let commands = config.preinstall.commands_for_current_platform(profile);
+    if commands.is_empty() {
+        return Vec::new();
+    }
+
+    let missing_names: BTreeSet<&str> = preview
+        .missing_tools()
+        .into_iter()
+        .filter(|status| status.installable)
+        .filter(|status| selection.includes_tool(&status.name))
+        .map(|status| status.name.as_str())
+        .collect();
+    if missing_names.is_empty() {
+        return Vec::new();
+    }
+
+    commands
 }
 
 fn is_rust_toolchain(name: &str) -> bool {
@@ -746,11 +1062,14 @@ fn install_missing_skills(
     config: &InstallConfig,
     profile: Profile,
     preview: &InstallPreview,
+    selection: &InstallSelection,
     force: bool,
+    progress: &mut InstallProgress,
 ) -> Result<(), ForgeError> {
     let missing: Vec<(&str, Agent)> = preview
         .missing_skills()
         .into_iter()
+        .filter(|status| selection.includes_skill(&status.name, status.agent))
         .map(|status| (status.name.as_str(), status.agent))
         .collect();
     if missing.is_empty() {
@@ -766,6 +1085,7 @@ fn install_missing_skills(
         if agents.is_empty() {
             continue;
         }
+        progress.next("安装 Skill", &skill.name);
         let item = InstallItem {
             name: skill.name.clone(),
             kind: InstallKind::Skill,
