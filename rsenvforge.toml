@@ -1,6 +1,7 @@
 # rsenvforge 默认安装表单
 #
 # 工具清单严格按 profile 分组填写，不会自动继承其他 profile 的工具。
+# 注意：只有 preinstall 命令会按等级累积执行，profiles 中的 tools/skills/items 不会累积。
 
 [profiles.light]
 tools = [
@@ -39,7 +40,7 @@ tools = []
 skills = []
 items = []
 
-# 分级安装前置命令。standard 会继承 light，full 会继承 light + standard。
+# 分级安装前置命令。standard 会执行 light + standard，full 会执行 light + standard + full。
 [preinstall.light.linux]
 commands = []
 
@@ -58,102 +59,47 @@ commands = []
 [preinstall.full.windows]
 commands = []
 
-# Rust 安装完成后会使用这些内容补充 Cargo 配置和 ~/.bashrc。
+# [environment] 是实际会写入本机环境文件的配置区。
+# cargo_config 会写入 Cargo config.toml；bashrc 会追加到 Linux ~/.bashrc；
+# npmrc 会追加到用户级 .npmrc。下面的镜像行默认保持注释，不参与安装。
 [environment]
 cargo_config = [
+  # Cargo 镜像示例：需要启用时取消下面四行注释，并改成内网地址。
+  # "[source.crates-io]",
+  # "replace-with = \"mirror\"",
+  # "[source.mirror]",
+  # "registry = \"sparse+https://mirror.com/crates.io-index/\"",
   "[net]",
   "git-fetch-with-cli = true",
 ]
 bashrc = [
+  # Rustup 镜像示例：需要启用时取消下面两行注释，并改成内网地址。
+  # "export RUSTUP_DIST_SERVER=https://mirror.com/rustup",
+  # "export RUSTUP_UPDATE_ROOT=https://mirror.com/rustup/rustup",
+  # NVM/Node.js 镜像示例：仅用于机器已经安装 nvm 的环境；默认配置不会安装 nvm。
+  # "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
+  # npm 镜像示例：需要启用时取消下面两行注释，并改成内网地址。
   # "registry=https://mirror.com/npm/",
   # "strict-ssl=false",
 ]
 
-# 镜像预设示例。以下内容全部保持注释状态，不参与当前测试或安装。
-# 需要启用时，请把对应内容复制到上方 [environment] 或下方 [apt_mirror]，
-# 并按内网实际路径调整。
-#
-# APT 镜像：
+# 内部 APT 镜像配置独立于 [environment]，因为它会生成系统 APT source 文件。
+# 以下内容全部保持注释状态，不参与当前测试或安装；需要启用时请选择一种方式取消注释。
 # 查询当前 Linux 系统会用于匹配的值：
 # . /etc/os-release
 # echo "distribution=${ID}"
 # echo "codename=${VERSION_CODENAME:-$UBUNTU_CODENAME}"
 # echo "architecture=$(dpkg --print-architecture)"
 #
-# [apt_mirror]
-# uri = "https://mirror.com/{distribution}"
-# suites = ["{codename}", "{codename}-updates", "{codename}-security"]
-# components = ["main", "restricted", "universe", "multiverse"]
-# architectures = ["{architecture}"]
-# source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
-#
-# 如果内网镜像给的是传统 deb 行，也可以改用 lines。
-# lines 会直接生成 .list 文件；每条 rule 也可以定义自己的 lines。
-# source_file = "/etc/apt/sources.list.d/rsenvforge.list"
-# lines = [
-#   "deb https://mirror.com/{distribution} {codename} main restricted universe multiverse",
-#   "deb https://mirror.com/{distribution} {codename}-updates main restricted universe multiverse",
-#   "deb https://mirror.com/{distribution} {codename}-security main restricted universe multiverse",
-# ]
-#
-# 如果同一系统的不同架构需要不同镜像，可以使用 rules。
-# 未在 rule 中填写的 suites/components/architectures/signed_by/source_file
-# 会继承 [apt_mirror] 中的默认值；规则按书写顺序匹配，命中第一条即使用。
-# [[apt_mirror.rules]]
-# distribution = "ubuntu"
-# architecture = "amd64"
-# uri = "https://mirror-amd64.example/ubuntu"
-# lines = [
-#   "deb https://mirror-amd64.example/ubuntu {codename} main restricted universe multiverse",
-#   "deb https://mirror-amd64.example/ubuntu {codename}-updates main restricted universe multiverse",
-# ]
-#
-# [[apt_mirror.rules]]
-# distribution = "ubuntu"
-# architecture = "arm64"
-# uri = "https://mirror-arm64.example/ubuntu"
-# lines = [
-#   "deb https://mirror-arm64.example/ubuntu {codename} main restricted universe multiverse",
-#   "deb https://mirror-arm64.example/ubuntu {codename}-updates main restricted universe multiverse",
-# ]
-#
-# Cargo 镜像：
-# cargo_config = [
-#   "[source.crates-io]",
-#   "replace-with = \"mirror\"",
-#   "[source.mirror]",
-#   "registry = \"sparse+https://mirror.com/crates.io-index/\"",
-#   "[net]",
-#   "git-fetch-with-cli = true",
-# ]
-#
-# Rustup 镜像：
-# bashrc = [
-#   "export RUSTUP_DIST_SERVER=https://mirror.com/rustup",
-#   "export RUSTUP_UPDATE_ROOT=https://mirror.com/rustup/rustup",
-#   ". \"$HOME/.cargo/env\"",
-# ]
-#
-# NVM / Node.js 镜像：
-# bashrc = [
-#   "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
-#   ". \"$HOME/.cargo/env\"",
-# ]
-#
-# npm 镜像：
-# npmrc = [
-#   "registry=https://mirror.com/npm/",
-#   "strict-ssl=false",
-# ]
-
-# 内部 APT 镜像示例。取消注释后，先执行：
+# 使用前建议先执行：
 # rsenvforge apt-mirror check
 # 验证通过后，再执行：
 # rsenvforge apt-mirror apply
-# 可用变量：{distribution}、{codename}、{architecture}。
+#
+# 方式一：Deb822 .sources 模式。适合同一组 URI/suites/components 的镜像。
 # [apt_mirror]
 # uri = "https://apt.internal.example/{distribution}"
 # suites = ["{codename}", "{codename}-updates", "{codename}-security"]
@@ -162,6 +108,9 @@ npmrc = [
 # signed_by = "/usr/share/keyrings/internal-archive-keyring.gpg"
 # source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
 #
+# 如果同一系统的不同架构需要不同镜像，可以使用 rules。
+# 未在 rule 中填写的 suites/components/architectures/signed_by/source_file
+# 会继承 [apt_mirror] 中的默认值；规则按书写顺序匹配，命中第一条即使用。
 # [[apt_mirror.rules]]
 # distribution = "ubuntu"
 # architecture = "amd64"
@@ -172,7 +121,8 @@ npmrc = [
 # architecture = "arm64"
 # uri = "https://apt-arm64.internal.example/ubuntu"
 #
-# 传统 deb 行模式示例。若不同系统/架构的行不一样，把 lines 写进对应 rule。
+# 方式二：传统 deb 行 .list 模式。适合内网直接提供多行 deb 配置的情况。
+# 若不同系统/架构的行不一样，把 lines 写进对应 rule。
 # [apt_mirror]
 # source_file = "/etc/apt/sources.list.d/rsenvforge.list"
 # lines = [
@@ -188,7 +138,15 @@ npmrc = [
 #   "deb https://apt-amd64.internal.example/ubuntu {codename}-updates main restricted universe multiverse",
 # ]
 
-# 工具标签检查。只有在具体工具中显式填写 tags = [\"名称\"] 才会执行。
+# [[apt_mirror.rules]]
+# distribution = "ubuntu"
+# architecture = "arm64"
+# lines = [
+#   "deb https://apt-arm64.internal.example/ubuntu {codename} main restricted universe multiverse",
+#   "deb https://apt-arm64.internal.example/ubuntu {codename}-updates main restricted universe multiverse",
+# ]
+
+# 工具标签检查。只有在具体工具中显式填写 tags = ["名称"] 才会执行。
 [tag_checks.proxy]
 check_windows = "powershell -NoProfile -Command \"if ($env:http_proxy -or $env:https_proxy -or $env:HTTP_PROXY -or $env:HTTPS_PROXY) { exit 0 } else { exit 1 }\""
 check_linux = "sh -lc 'test -n \"$http_proxy$https_proxy$HTTP_PROXY$HTTPS_PROXY\"'"
@@ -220,6 +178,7 @@ check_linux = "cargo --version || exit $?; config=\"${CARGO_HOME:-$HOME/.cargo}/
 check_windows = "cargo install --list"
 check_linux = "cargo install --list"
 
+# 仅用于机器已经安装 nvm 的环境；默认配置不会安装 nvm。
 [tag_checks.nvm-mirror]
 check_windows = "powershell -NoProfile -Command \"nvm version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $root = if ($env:NVM_HOME) { $env:NVM_HOME } else { Join-Path $env:APPDATA 'nvm' }; $settings = Join-Path $root 'settings.txt'; if (!(Test-Path $settings)) { exit 1 }; $line = Select-String -Path $settings -Pattern '^node_mirror:\\s*(.+)$' | Select-Object -First 1; if ($null -eq $line) { exit 1 }; $url = $line.Matches[0].Groups[1].Value.Trim().TrimEnd('/'); curl.exe -fsS --connect-timeout 10 ($url + '/index.tab') > $null; exit $LASTEXITCODE\""
 check_linux = "nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
