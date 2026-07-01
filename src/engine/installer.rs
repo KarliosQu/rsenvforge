@@ -16,7 +16,10 @@ use super::models::{
     Profile, ProfileDef, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
-use super::process::{command_status_text, run_shell_capture, run_shell_labeled, ShellRunStatus};
+use super::process::{
+    command_status_text, run_shell_capture, run_shell_labeled, run_shell_labeled_quiet,
+    ShellRunStatus,
+};
 use super::proxy::{print_proxy_report, proxy_report};
 use super::registry::{append_registry, read_registry, write_registry};
 use super::util::{
@@ -78,7 +81,7 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
     let rust_missing = preview
         .tools
         .iter()
-        .any(|status| status.name == "rust" && status.supported && !status.installed);
+        .any(|status| is_rust_toolchain(&status.name) && status.supported && !status.installed);
     maybe_apply_apt_mirror_for_install(&config)?;
     run_preinstall_commands(&config, options.profile, &preview)?;
     process_profile_tools(&config, options.profile, &preview)?;
@@ -335,7 +338,7 @@ fn check_tool(tool: &ToolDef) -> ToolStatus {
             supported: false,
         };
     }
-    if tool.name == "rust" {
+    if is_rust_toolchain(&tool.name) {
         return check_rust_toolchain(tool);
     }
     let Some(command) = tool.check_command() else {
@@ -688,14 +691,17 @@ fn run_preinstall_commands(
         return Ok(());
     }
 
-    println!("执行安装前准备命令：");
+    println!("安装前置命令");
     for command in commands {
-        println!("  {}", command);
-        if run_shell_labeled("安装前准备命令", &command)? == ShellRunStatus::Skipped {
-            println!("已跳过安装前准备命令。");
+        if run_shell_labeled_quiet("安装前置命令", &command)? == ShellRunStatus::Skipped {
+            println!("已跳过安装前置命令。");
         }
     }
     Ok(())
+}
+
+fn is_rust_toolchain(name: &str) -> bool {
+    name == "rust-toolchain" || name == "rust"
 }
 
 fn install_missing_skills(

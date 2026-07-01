@@ -18,8 +18,26 @@ pub(crate) enum ShellRunStatus {
 }
 
 pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<ShellRunStatus, ForgeError> {
+    run_shell_labeled_with_options(label, command, true, true)
+}
+
+pub(crate) fn run_shell_labeled_quiet(
+    label: &str,
+    command: &str,
+) -> Result<ShellRunStatus, ForgeError> {
+    run_shell_labeled_with_options(label, command, false, false)
+}
+
+fn run_shell_labeled_with_options(
+    label: &str,
+    command: &str,
+    show_skip_hint: bool,
+    include_command_on_error: bool,
+) -> Result<ShellRunStatus, ForgeError> {
     let command = command_for_current_user(command);
-    print_skip_hint(label);
+    if show_skip_hint {
+        print_skip_hint(label);
+    }
     let mut child = shell_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -60,7 +78,9 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<ShellRunSt
         let elapsed = started.elapsed().as_secs();
         if elapsed >= next_notice {
             print_progress_notice(label, elapsed, &output);
-            print_skip_hint(label);
+            if show_skip_hint {
+                print_skip_hint(label);
+            }
             next_notice = next_notice.saturating_mul(2);
         }
 
@@ -74,15 +94,16 @@ pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<ShellRunSt
         Ok(ShellRunStatus::Completed)
     } else {
         let output = output_snapshot(&output);
-        Err(ForgeError::Command(format!(
-            "{}\n{}",
-            command,
-            if output.trim().is_empty() {
-                "命令未输出错误详情".to_string()
-            } else {
-                output
-            }
-        )))
+        let detail = if output.trim().is_empty() {
+            "命令未输出错误详情".to_string()
+        } else {
+            output
+        };
+        if include_command_on_error {
+            Err(ForgeError::Command(format!("{}\n{}", command, detail)))
+        } else {
+            Err(ForgeError::Command(detail))
+        }
     }
 }
 

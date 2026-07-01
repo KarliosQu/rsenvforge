@@ -176,8 +176,8 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 
 三个等级按顺序累积安装配置文件中的工具清单：
 
-- `light`：Cargo/Rust 辅助工具。
-- `standard`：包含 `light`，并追加 Rust 构建基础、Rust 与 Node.js 环境。
+- `light`：Cargo/Rust 辅助工具、Python、Ninja 与 Valgrind。
+- `standard`：包含 `light`，并追加 Rust 构建基础、Rust toolchain 与 Node.js 环境。
 - `full`：包含 `light + standard`，并追加自定义全量工具；当前默认追加项为空。
 
 ### light
@@ -198,19 +198,22 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `flamegraph-rs` | `cargo install flamegraph` |
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
-| 工具 | `cpp2rust-demo` | `cargo install cpp2rust-demo` |
-| 工具 | `c2rust-demo` | `cargo install c2rust-demo` |
 | 工具 | `rust-checker-cli` | `cargo install rust-checker-cli` |
+| 工具 | `python` | Windows: winget；Linux: `apt-get install -y python3 python3-pip` |
+| 工具 | `ninja` | Windows: winget；Linux: `apt-get install -y ninja-build` |
+| 工具 | `valgrind` | Linux: `apt-get install -y valgrind`；Windows: 不支持 |
 
 ### standard
 
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
-| 工具 | `rust` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；已有 rustup 时安装 stable、rustfmt、clippy |
+| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；已有 rustup 时安装 stable、rustfmt、clippy |
+| 工具 | `nvm` | Windows: winget；Linux: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| PROFILE="$HOME/.bashrc" bash` |
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
+| 工具 | `gitnexus` | `npm install -g gitnexus`，安装前要求 Node.js >= 20 且 npm registry 可用 |
 
-默认配置不再提供 nvm 安装项。Linux 下安装 `nodejs` 时，如果机器已有 nvm，会优先用已有 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。
+默认配置会在 `standard` 中安装 nvm。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。
 
 ### full
 
@@ -234,7 +237,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 
 ```toml
 [profiles.standard]
-tools = ["rust", "cargo-audit", "nodejs"]
+tools = ["rust-toolchain", "cargo-audit", "nodejs"]
 skills = []
 items = []
 
@@ -291,7 +294,7 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 | `bashrc` | Linux 下 rust 安装完成后追加到 `~/.bashrc` |
 | `npmrc` | 追加写入用户级 `.npmrc`，用于 npm registry、strict-ssl 等配置 |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust`，在 rust 安装完成后会再次确保这些环境文件已经写入。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入。
 
 Linux 下安装命令优先使用 `bash -lc` 执行，因此可以在 `preinstall` 中使用 `source ~/.bashrc` 让刚写入的环境变量对后续命令生效；如果系统没有 `bash`，会回退到 `sh -c`，此时应使用 `. ~/.bashrc`。
 

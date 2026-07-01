@@ -253,9 +253,9 @@ fn preinstall_commands_are_profile_scoped() {
         skills = []
         items = []
         [preinstall.standard.windows]
-        commands = ["echo preinstall-standard"]
+        commands = ["echo preinstall-standard", "echo preinstall-second"]
         [preinstall.standard.linux]
-        commands = ["echo preinstall-standard"]
+        commands = ["echo preinstall-standard", "echo preinstall-second"]
         [[tools]]
         name = "missing-demo"
         check_windows = "definitely-missing-rsenvforge-demo --version"
@@ -273,7 +273,7 @@ fn preinstall_commands_are_profile_scoped() {
         "Y\n",
     );
     assert_success(&light);
-    assert!(!String::from_utf8_lossy(&light.stdout).contains("preinstall-standard"));
+    assert!(!String::from_utf8_lossy(&light.stdout).contains("安装前置命令"));
 
     let standard = command_with_input(
         Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
@@ -282,7 +282,11 @@ fn preinstall_commands_are_profile_scoped() {
         "Y\n",
     );
     assert_success(&standard);
-    assert!(String::from_utf8_lossy(&standard.stdout).contains("preinstall-standard"));
+    let standard_stdout = String::from_utf8_lossy(&standard.stdout);
+    assert!(standard_stdout.contains("安装前置命令"));
+    assert_eq!(standard_stdout.matches("安装前置命令").count(), 1);
+    assert!(!standard_stdout.contains("echo preinstall-standard"));
+    assert!(!standard_stdout.contains("echo preinstall-second"));
 
     fs::remove_dir_all(temp).unwrap();
 }

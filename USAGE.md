@@ -61,7 +61,7 @@ skills = []
 items = []
 
 [profiles.standard]
-tools = ["rust", "nodejs"]
+tools = ["rust-toolchain", "nodejs"]
 skills = []
 items = []
 

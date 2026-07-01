@@ -19,9 +19,10 @@ tools = [
   "flamegraph-rs",
   "cargo-msrv",
   "cargo-semver-checks",
-  "cpp2rust-demo",
-  "c2rust-demo",
   "rust-checker-cli",
+  "python",
+  "ninja",
+  "valgrind",
 ]
 skills = []
 items = []
@@ -29,8 +30,10 @@ items = []
 [profiles.standard]
 tools = [
   "rust-build-base",
-  "rust",
+  "rust-toolchain",
+  "nvm",
   "nodejs",
+  "gitnexus",
 ]
 skills = []
 items = []
@@ -74,7 +77,7 @@ cargo_config = [
 bashrc = [
   "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
   "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
-  # NVM/Node.js 镜像示例：仅用于机器已经安装 nvm 的环境；默认配置不会安装 nvm。
+  # NVM/Node.js 镜像示例：需要使用 nvm 下载镜像时取消注释，并改成内网地址。
   # "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
   ". \"$HOME/.cargo/env\"",
 ]
@@ -181,7 +184,7 @@ check_linux = "cargo --version || exit $?; config=\"${CARGO_HOME:-$HOME/.cargo}/
 check_windows = "cargo install --list"
 check_linux = "cargo install --list"
 
-# 仅用于机器已经安装 nvm 的环境；默认配置不会安装 nvm。
+# 用于校验 nvm 下载镜像；只有在具体工具 tags 中显式引用 nvm-mirror 时才会执行。
 [tag_checks.nvm-mirror]
 check_windows = "powershell -NoProfile -Command \"nvm version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $root = if ($env:NVM_HOME) { $env:NVM_HOME } else { Join-Path $env:APPDATA 'nvm' }; $settings = Join-Path $root 'settings.txt'; if (!(Test-Path $settings)) { exit 1 }; $line = Select-String -Path $settings -Pattern '^node_mirror:\\s*(.+)$' | Select-Object -First 1; if ($null -eq $line) { exit 1 }; $url = $line.Matches[0].Groups[1].Value.Trim().TrimEnd('/'); curl.exe -fsS --connect-timeout 10 ($url + '/index.tab') > $null; exit $LASTEXITCODE\""
 check_linux = "nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
@@ -211,7 +214,7 @@ install_windows = "0"
 install_linux = "apt-get update && apt-get install -y build-essential pkg-config libssl-dev"
 
 [[tools]]
-name = "rust"
+name = "rust-toolchain"
 tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
@@ -338,20 +341,40 @@ install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%Pro
 install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
 
 [[tools]]
-name = "cpp2rust-demo"
-tags = ["cargo-install"]
-check_windows = "cpp2rust-demo --version"
-check_linux = "cpp2rust-demo --version"
-install_windows = "cargo install cpp2rust-demo"
-install_linux = "cargo install cpp2rust-demo"
+name = "nvm"
+check_windows = "nvm --version"
+check_linux = "nvm --version"
+install_windows = "winget install -e --id CoreyButler.NVMforWindows"
+install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
 
 [[tools]]
-name = "c2rust-demo"
-tags = ["cargo-install"]
-check_windows = "c2rust-demo --version"
-check_linux = "c2rust-demo --version"
-install_windows = "cargo install c2rust-demo"
-install_linux = "cargo install c2rust-demo"
+name = "gitnexus"
+tags = ["node20", "npm-mirror"]
+check_windows = "gitnexus --version"
+check_linux = "gitnexus --version"
+install_windows = "npm install -g gitnexus"
+install_linux = "npm install -g gitnexus"
+
+[[tools]]
+name = "python"
+check_windows = "python --version"
+check_linux = "python3 --version || python --version"
+install_windows = "winget install -e --id Python.Python.3.12"
+install_linux = "apt-get update && apt-get install -y python3 python3-pip"
+
+[[tools]]
+name = "ninja"
+check_windows = "ninja --version"
+check_linux = "ninja --version"
+install_windows = "winget install -e --id Ninja-build.Ninja"
+install_linux = "apt-get update && apt-get install -y ninja-build"
+
+[[tools]]
+name = "valgrind"
+check_windows = "0"
+check_linux = "valgrind --version"
+install_windows = "0"
+install_linux = "apt-get update && apt-get install -y valgrind"
 
 [[tools]]
 name = "rust-checker-cli"

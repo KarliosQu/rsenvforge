@@ -610,7 +610,7 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
             "rustup component list --installed",
             "rustup component add llvm-tools-preview",
         ),
-        "rust" => (
+        "rust" | "rust-toolchain" => (
             "rustup --version",
             "rustup toolchain install stable && rustup component add rustfmt clippy",
         ),

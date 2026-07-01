@@ -248,18 +248,26 @@ mod tests {
             "flamegraph-rs",
             "cargo-msrv",
             "cargo-semver-checks",
-            "cpp2rust-demo",
-            "c2rust-demo",
             "rust-checker-cli",
         ] {
             assert!(light.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
         }
-        for tool in ["rust-build-base", "rust", "nodejs"] {
+        for tool in ["python", "ninja", "valgrind"] {
+            assert!(light.contains(&tool.to_string()));
+            assert!(config.tools.iter().any(|candidate| candidate.name == tool));
+        }
+        assert!(!light.contains(&"cpp2rust-demo".to_string()));
+        assert!(!light.contains(&"c2rust-demo".to_string()));
+        for tool in [
+            "rust-build-base",
+            "rust-toolchain",
+            "nvm",
+            "nodejs",
+            "gitnexus",
+        ] {
             assert!(standard.contains(&tool.to_string()));
         }
-        assert!(!standard.contains(&"nvm".to_string()));
-        assert!(!standard.contains(&"gitnexus".to_string()));
     }
 
     #[test]
@@ -290,8 +298,6 @@ mod tests {
             "flamegraph-rs",
             "cargo-msrv",
             "cargo-semver-checks",
-            "cpp2rust-demo",
-            "c2rust-demo",
             "rust-checker-cli",
         ] {
             let tool = config
@@ -304,7 +310,7 @@ mod tests {
         let rust = config
             .tools
             .iter()
-            .find(|candidate| candidate.name == "rust")
+            .find(|candidate| candidate.name == "rust-toolchain")
             .unwrap();
         assert!(rust.tags.is_empty());
         for tool in ["rust-analyzer", "miri"] {
@@ -321,6 +327,21 @@ mod tests {
             .find(|candidate| candidate.name == "nodejs")
             .unwrap();
         assert!(nodejs.tags.is_empty());
+        let nvm = config
+            .tools
+            .iter()
+            .find(|candidate| candidate.name == "nvm")
+            .unwrap();
+        assert!(nvm.tags.is_empty());
+        let gitnexus = config
+            .tools
+            .iter()
+            .find(|candidate| candidate.name == "gitnexus")
+            .unwrap();
+        assert_eq!(
+            gitnexus.tags,
+            vec!["node20".to_string(), "npm-mirror".to_string()]
+        );
     }
 
     #[test]
