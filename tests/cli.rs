@@ -176,9 +176,9 @@ fn install_light_and_full_use_selected_profiles() {
             [profiles.light]
             items = ["light"]
             [profiles.standard]
-            items = ["light"]
+            items = []
             [profiles.full]
-            items = ["light", "full"]
+            items = ["full"]
             [[items]]
             name = "light"
             kind = "skill"
@@ -225,6 +225,7 @@ fn install_light_and_full_use_selected_profiles() {
         .output()
         .unwrap();
     assert_success(&full);
+    assert!(claude.join("light-skill").is_dir());
     assert!(claude.join("full-skill").is_dir());
 
     fs::remove_dir_all(temp).unwrap();

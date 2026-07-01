@@ -13,7 +13,7 @@ use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_
 use super::input::read_user_line;
 use super::models::{
     Agent, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview, InstallReport,
-    Profile, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
+    Profile, ProfileDef, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
 use super::process::{command_status_text, run_shell_capture, run_shell_labeled, ShellRunStatus};
@@ -99,10 +99,7 @@ pub fn preview_install(
     config: &InstallConfig,
     profile: Profile,
 ) -> Result<InstallPreview, ForgeError> {
-    let profile_def = config
-        .profiles
-        .get(profile.as_str())
-        .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
+    let profile_def = merged_profile(config, profile)?;
     let tools = tools_for_names(config, &profile_def.tools)?;
     let skills = skills_for_names(config, &profile_def.skills)?;
     let mut tool_status = Vec::new();
@@ -495,10 +492,7 @@ fn process_profile_tools(
         .filter(|status| status.supported && status.installed)
         .map(|status| status.name.as_str())
         .collect();
-    let profile_def = config
-        .profiles
-        .get(profile.as_str())
-        .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
+    let profile_def = merged_profile(config, profile)?;
     let tools = tools_for_names(config, &profile_def.tools)?;
     let mut passed_tags = BTreeSet::new();
     let mut session = InstallSession::default();
@@ -718,10 +712,7 @@ fn install_missing_skills(
     if missing.is_empty() {
         return Ok(());
     }
-    let profile_def = config
-        .profiles
-        .get(profile.as_str())
-        .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
+    let profile_def = merged_profile(config, profile)?;
     let skills = skills_for_names(config, &profile_def.skills)?;
     for skill in skills {
         let agents: Vec<Agent> = missing
@@ -749,10 +740,7 @@ fn install_legacy_items(
     config: &InstallConfig,
     options: &InstallOptions,
 ) -> Result<Vec<RegistryEntry>, ForgeError> {
-    let profile_def = config
-        .profiles
-        .get(options.profile.as_str())
-        .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", options.profile.as_str())))?;
+    let profile_def = merged_profile(config, options.profile)?;
     let selected = items_for_names(config, &profile_def.items)?;
     let mut installed = Vec::new();
     for item in selected {
@@ -773,6 +761,36 @@ fn install_legacy_items(
         }
     }
     Ok(installed)
+}
+
+fn merged_profile(config: &InstallConfig, profile: Profile) -> Result<ProfileDef, ForgeError> {
+    let mut merged = ProfileDef::default();
+    for profile in included_profiles(profile) {
+        let profile_def = config
+            .profiles
+            .get(profile.as_str())
+            .ok_or_else(|| ForgeError::Config(format!("缺少 profile：{}", profile.as_str())))?;
+        extend_unique(&mut merged.tools, &profile_def.tools);
+        extend_unique(&mut merged.skills, &profile_def.skills);
+        extend_unique(&mut merged.items, &profile_def.items);
+    }
+    Ok(merged)
+}
+
+fn included_profiles(profile: Profile) -> Vec<Profile> {
+    match profile {
+        Profile::Light => vec![Profile::Light],
+        Profile::Standard => vec![Profile::Light, Profile::Standard],
+        Profile::Full => vec![Profile::Light, Profile::Standard, Profile::Full],
+    }
+}
+
+fn extend_unique(target: &mut Vec<String>, incoming: &[String]) {
+    for item in incoming {
+        if !target.contains(item) {
+            target.push(item.clone());
+        }
+    }
 }
 
 fn items_for_names(

@@ -113,6 +113,63 @@ mod tests {
     }
 
     #[test]
+    fn preview_install_inherits_lower_profiles() {
+        let config = parse_config(
+            r#"
+            [profiles.light]
+            tools = ["light-tool"]
+            skills = []
+            items = []
+
+            [profiles.standard]
+            tools = ["standard-tool"]
+            skills = []
+            items = []
+
+            [profiles.full]
+            tools = ["full-tool"]
+            skills = []
+            items = []
+
+            [[tools]]
+            name = "light-tool"
+            check = "0"
+            install = "0"
+
+            [[tools]]
+            name = "standard-tool"
+            check = "0"
+            install = "0"
+
+            [[tools]]
+            name = "full-tool"
+            check = "0"
+            install = "0"
+            "#,
+        )
+        .unwrap();
+
+        let standard = preview_install(&config, Profile::Standard).unwrap();
+        let full = preview_install(&config, Profile::Full).unwrap();
+
+        assert_eq!(
+            standard
+                .tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["light-tool", "standard-tool"]
+        );
+        assert_eq!(
+            full.tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["light-tool", "standard-tool", "full-tool"]
+        );
+    }
+
+    #[test]
     fn parses_apt_mirror_configuration() {
         let config = parse_config(
             r#"

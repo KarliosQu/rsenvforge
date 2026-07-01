@@ -52,7 +52,7 @@ Linux 使用相同的 Cargo 命令。需要配置 APT 源时，请在 Linux 或 
 
 ## Profile
 
-每个 profile 都显式列出工具、skill 与旧式 item 名称；profile 之间不会自动继承工具。
+profile 会按等级累积：`standard` 包含 `light + standard`，`full` 包含 `light + standard + full`。同名工具、skill 与旧式 item 会自动去重。
 
 ```toml
 [profiles.light]
@@ -71,7 +71,7 @@ skills = []
 items = []
 ```
 
-运行 `rsenvforge install light` 只处理 `light` 列表；运行 `rsenvforge install` 只处理 `standard` 列表。
+运行 `rsenvforge install light` 只处理 `light` 列表；运行 `rsenvforge install` 会处理 `light + standard`；运行 `rsenvforge install full` 会处理三个等级。
 
 ## 工具定义
 

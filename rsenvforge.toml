@@ -1,7 +1,7 @@
 # rsenvforge 默认安装表单
 #
-# 工具清单严格按 profile 分组填写，不会自动继承其他 profile 的工具。
-# 注意：只有 preinstall 命令会按等级累积执行，profiles 中的 tools/skills/items 不会累积。
+# 安装等级会按 light -> standard -> full 累积。
+# standard 会包含 light；full 会包含 light + standard + full。
 
 [profiles.light]
 tools = [
@@ -40,7 +40,7 @@ tools = []
 skills = []
 items = []
 
-# 分级安装前置命令。standard 会执行 light + standard，full 会执行 light + standard + full。
+# 分级安装前置命令同样会按等级累积执行。
 [preinstall.light.linux]
 commands = []
 
@@ -216,7 +216,7 @@ tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
 install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
-install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl --proto '=https' --tlsv1.2 -sSf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
+install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl -ssf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
 
 [[tools]]
 name = "cargo-llvm-cov"
