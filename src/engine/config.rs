@@ -280,6 +280,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             },
             Section::AptMirror => match key {
                 "uri" => apt_mirror.uri = Some(parse_string(value)?),
+                "lines" => apt_mirror.lines = parse_string_array(value)?,
                 "suites" => apt_mirror.suites = parse_string_array(value)?,
                 "components" => apt_mirror.components = parse_string_array(value)?,
                 "architectures" => apt_mirror.architectures = parse_string_array(value)?,
@@ -287,7 +288,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 "source_file" => apt_mirror.source_file = Some(parse_string(value)?),
                 _ => {
                     return Err(ForgeError::Parse(format!(
-                        "第 {} 行：apt_mirror 只支持 uri/suites/components/architectures/signed_by/source_file",
+                        "第 {} 行：apt_mirror 只支持 uri/lines/suites/components/architectures/signed_by/source_file",
                         line_number + 1
                     )))
                 }
@@ -304,6 +305,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     "codename" => rule.codename = Some(parse_string(value)?),
                     "architecture" => rule.architecture = Some(parse_string(value)?),
                     "uri" => rule.uri = Some(parse_string(value)?),
+                    "lines" => rule.lines = parse_string_array(value)?,
                     "suites" => rule.suites = parse_string_array(value)?,
                     "components" => rule.components = parse_string_array(value)?,
                     "architectures" => rule.architectures = parse_string_array(value)?,
@@ -311,7 +313,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     "source_file" => rule.source_file = Some(parse_string(value)?),
                     _ => {
                         return Err(ForgeError::Parse(format!(
-                            "第 {} 行：apt_mirror.rules 只支持 distribution/codename/architecture/uri/suites/components/architectures/signed_by/source_file",
+                            "第 {} 行：apt_mirror.rules 只支持 distribution/codename/architecture/uri/lines/suites/components/architectures/signed_by/source_file",
                             line_number + 1
                         )))
                     }
@@ -419,7 +421,10 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     }
     builtin.preinstall = config.preinstall;
     builtin.environment = config.environment;
-    if config.apt_mirror.uri.is_some() || !config.apt_mirror.rules.is_empty() {
+    if config.apt_mirror.uri.is_some()
+        || !config.apt_mirror.lines.is_empty()
+        || !config.apt_mirror.rules.is_empty()
+    {
         builtin.apt_mirror = config.apt_mirror;
     }
     for (tag, check) in config.tag_checks {

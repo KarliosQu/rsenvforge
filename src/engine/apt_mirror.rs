@@ -8,6 +8,7 @@ use super::fsutil::{create_dir_all, read_to_string, remove_dir_all, write_file};
 use super::models::{AptMirrorDef, AptMirrorRuleDef, InstallConfig};
 
 const DEFAULT_SOURCE_FILE: &str = "/etc/apt/sources.list.d/rsenvforge.sources";
+const DEFAULT_LEGACY_SOURCE_FILE: &str = "/etc/apt/sources.list.d/rsenvforge.list";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AptMirrorPreview {
@@ -140,6 +141,19 @@ fn build_preview(
     system: &AptSystem,
 ) -> Result<AptMirrorPreview, ForgeError> {
     let mirror = select_mirror(mirror, system)?;
+    if !mirror.lines.is_empty() {
+        let lines = expand_lines(mirror.lines, system)?;
+        let source_file = mirror.source_file.unwrap_or(DEFAULT_LEGACY_SOURCE_FILE);
+        validate_source_file(source_file, false)?;
+        return Ok(AptMirrorPreview {
+            distribution: system.distribution.clone(),
+            codename: system.codename.clone(),
+            architecture: system.architecture.clone(),
+            source_file: PathBuf::from(source_file),
+            source_contents: format!("{}\n", lines.join("\n")),
+        });
+    }
+
     let uri = expand_required(mirror.uri, "uri", system)?;
     if !(uri.starts_with("http://") || uri.starts_with("https://")) {
         return Err(ForgeError::Config(
@@ -162,11 +176,7 @@ fn build_preview(
         validate_scalar("apt_mirror.signed_by", value)?;
     }
     let source_file = mirror.source_file.unwrap_or(DEFAULT_SOURCE_FILE);
-    if !source_file.starts_with('/') {
-        return Err(ForgeError::Config(
-            "apt_mirror.source_file 必须是 Linux 绝对路径".to_string(),
-        ));
-    }
+    validate_source_file(source_file, true)?;
 
     let mut contents = format!(
         "Types: deb\nURIs: {uri}\nSuites: {}\nComponents: {}\nArchitectures: {}\n",
@@ -189,6 +199,7 @@ fn build_preview(
 
 struct SelectedAptMirror<'a> {
     uri: Option<&'a str>,
+    lines: &'a [String],
     suites: &'a [String],
     components: &'a [String],
     architectures: &'a [String],
@@ -203,6 +214,11 @@ fn select_mirror<'a>(
     if let Some(rule) = mirror.rules.iter().find(|rule| rule_matches(rule, system)) {
         return Ok(SelectedAptMirror {
             uri: rule.uri.as_deref().or(mirror.uri.as_deref()),
+            lines: if rule.lines.is_empty() {
+                &mirror.lines
+            } else {
+                &rule.lines
+            },
             suites: if rule.suites.is_empty() {
                 &mirror.suites
             } else {
@@ -226,7 +242,7 @@ fn select_mirror<'a>(
         });
     }
 
-    if !mirror.rules.is_empty() && mirror.uri.is_none() {
+    if !mirror.rules.is_empty() && mirror.uri.is_none() && mirror.lines.is_empty() {
         return Err(ForgeError::Config(format!(
             "apt_mirror.rules 没有匹配当前系统：distribution={} codename={} architecture={}",
             system.distribution, system.codename, system.architecture
@@ -235,6 +251,7 @@ fn select_mirror<'a>(
 
     Ok(SelectedAptMirror {
         uri: mirror.uri.as_deref(),
+        lines: &mirror.lines,
         suites: &mirror.suites,
         components: &mirror.components,
         architectures: &mirror.architectures,
@@ -280,6 +297,27 @@ fn expand_list(
         .collect()
 }
 
+fn expand_lines(values: &[String], system: &AptSystem) -> Result<Vec<String>, ForgeError> {
+    values
+        .iter()
+        .map(|value| {
+            let expanded = expand_template(value, system)?;
+            let trimmed = expanded.trim();
+            if trimmed.is_empty() {
+                return Err(ForgeError::Config(
+                    "apt_mirror.lines 不能包含空行".to_string(),
+                ));
+            }
+            if !(trimmed.starts_with("deb ") || trimmed.starts_with("deb-src ")) {
+                return Err(ForgeError::Config(format!(
+                    "apt_mirror.lines 只支持以 deb 或 deb-src 开头的 APT 源行：{trimmed}"
+                )));
+            }
+            Ok(trimmed.to_string())
+        })
+        .collect()
+}
+
 fn expand_template(value: &str, system: &AptSystem) -> Result<String, ForgeError> {
     let value = value
         .replace("{distribution}", &system.distribution)
@@ -291,6 +329,25 @@ fn expand_template(value: &str, system: &AptSystem) -> Result<String, ForgeError
         )));
     }
     Ok(value)
+}
+
+fn validate_source_file(source_file: &str, deb822: bool) -> Result<(), ForgeError> {
+    if !source_file.starts_with('/') {
+        return Err(ForgeError::Config(
+            "apt_mirror.source_file 必须是 Linux 绝对路径".to_string(),
+        ));
+    }
+    if deb822 && !source_file.ends_with(".sources") {
+        return Err(ForgeError::Config(
+            "Deb822 APT 镜像配置的 source_file 应以 .sources 结尾".to_string(),
+        ));
+    }
+    if !deb822 && !source_file.ends_with(".list") {
+        return Err(ForgeError::Config(
+            "legacy APT lines 配置的 source_file 应以 .list 结尾".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_scalar(name: &str, value: &str) -> Result<(), ForgeError> {
@@ -339,6 +396,7 @@ mod tests {
     fn renders_deb822_source_with_system_variables() {
         let mirror = AptMirrorDef {
             uri: Some("https://apt.example.internal/{distribution}".to_string()),
+            lines: Vec::new(),
             suites: vec!["{codename}".to_string(), "{codename}-updates".to_string()],
             components: vec!["main".to_string(), "universe".to_string()],
             architectures: Vec::new(),
@@ -394,5 +452,48 @@ mod tests {
             .source_contents
             .contains("URIs: https://arm64.example.internal/ubuntu"));
         assert!(preview.source_contents.contains("Architectures: arm64"));
+    }
+
+    #[test]
+    fn renders_matching_rule_legacy_lines() {
+        let mirror = AptMirrorDef {
+            lines: vec!["deb https://default.example/{distribution} {codename} main".to_string()],
+            source_file: Some("/etc/apt/sources.list.d/rsenvforge.list".to_string()),
+            rules: vec![
+                AptMirrorRuleDef {
+                    distribution: Some("ubuntu".to_string()),
+                    architecture: Some("amd64".to_string()),
+                    lines: vec![
+                        "deb https://amd64.example/ubuntu {codename} main restricted".to_string(),
+                        "deb https://amd64.example/ubuntu {codename}-updates main restricted"
+                            .to_string(),
+                    ],
+                    ..AptMirrorRuleDef::default()
+                },
+                AptMirrorRuleDef {
+                    distribution: Some("ubuntu".to_string()),
+                    architecture: Some("arm64".to_string()),
+                    lines: vec!["deb https://arm64.example/ubuntu {codename} main".to_string()],
+                    ..AptMirrorRuleDef::default()
+                },
+            ],
+            ..AptMirrorDef::default()
+        };
+        let system = AptSystem {
+            distribution: "ubuntu".to_string(),
+            codename: "noble".to_string(),
+            architecture: "amd64".to_string(),
+        };
+
+        let preview = build_preview(&mirror, &system).unwrap();
+
+        assert_eq!(
+            preview.source_contents,
+            "deb https://amd64.example/ubuntu noble main restricted\ndeb https://amd64.example/ubuntu noble-updates main restricted\n"
+        );
+        assert_eq!(
+            preview.source_file,
+            std::path::PathBuf::from("/etc/apt/sources.list.d/rsenvforge.list")
+        );
     }
 }

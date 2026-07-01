@@ -184,6 +184,7 @@ pub struct InstallConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AptMirrorDef {
     pub uri: Option<String>,
+    pub lines: Vec<String>,
     pub suites: Vec<String>,
     pub components: Vec<String>,
     pub architectures: Vec<String>,
@@ -198,6 +199,7 @@ pub struct AptMirrorRuleDef {
     pub codename: Option<String>,
     pub architecture: Option<String>,
     pub uri: Option<String>,
+    pub lines: Vec<String>,
     pub suites: Vec<String>,
     pub components: Vec<String>,
     pub architectures: Vec<String>,

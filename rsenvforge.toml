@@ -35,10 +35,7 @@ skills = []
 items = []
 
 [profiles.full]
-tools = [
-  "nvm",
-  "gitnexus",
-]
+tools = []
 skills = []
 items = []
 
@@ -80,12 +77,27 @@ npmrc = [
 # 并按内网实际路径调整。
 #
 # APT 镜像：
+# 查询当前 Linux 系统会用于匹配的值：
+# . /etc/os-release
+# echo "distribution=${ID}"
+# echo "codename=${VERSION_CODENAME:-$UBUNTU_CODENAME}"
+# echo "architecture=$(dpkg --print-architecture)"
+#
 # [apt_mirror]
 # uri = "https://mirror.com/{distribution}"
 # suites = ["{codename}", "{codename}-updates", "{codename}-security"]
 # components = ["main", "restricted", "universe", "multiverse"]
 # architectures = ["{architecture}"]
 # source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+#
+# 如果内网镜像给的是传统 deb 行，也可以改用 lines。
+# lines 会直接生成 .list 文件；每条 rule 也可以定义自己的 lines。
+# source_file = "/etc/apt/sources.list.d/rsenvforge.list"
+# lines = [
+#   "deb https://mirror.com/{distribution} {codename} main restricted universe multiverse",
+#   "deb https://mirror.com/{distribution} {codename}-updates main restricted universe multiverse",
+#   "deb https://mirror.com/{distribution} {codename}-security main restricted universe multiverse",
+# ]
 #
 # 如果同一系统的不同架构需要不同镜像，可以使用 rules。
 # 未在 rule 中填写的 suites/components/architectures/signed_by/source_file
@@ -94,11 +106,19 @@ npmrc = [
 # distribution = "ubuntu"
 # architecture = "amd64"
 # uri = "https://mirror-amd64.example/ubuntu"
+# lines = [
+#   "deb https://mirror-amd64.example/ubuntu {codename} main restricted universe multiverse",
+#   "deb https://mirror-amd64.example/ubuntu {codename}-updates main restricted universe multiverse",
+# ]
 #
 # [[apt_mirror.rules]]
 # distribution = "ubuntu"
 # architecture = "arm64"
 # uri = "https://mirror-arm64.example/ubuntu"
+# lines = [
+#   "deb https://mirror-arm64.example/ubuntu {codename} main restricted universe multiverse",
+#   "deb https://mirror-arm64.example/ubuntu {codename}-updates main restricted universe multiverse",
+# ]
 #
 # Cargo 镜像：
 # cargo_config = [
@@ -151,6 +171,22 @@ npmrc = [
 # distribution = "ubuntu"
 # architecture = "arm64"
 # uri = "https://apt-arm64.internal.example/ubuntu"
+#
+# 传统 deb 行模式示例。若不同系统/架构的行不一样，把 lines 写进对应 rule。
+# [apt_mirror]
+# source_file = "/etc/apt/sources.list.d/rsenvforge.list"
+# lines = [
+#   "deb https://apt.internal.example/ubuntu {codename} main restricted universe multiverse",
+#   "deb https://apt.internal.example/ubuntu {codename}-updates main restricted universe multiverse",
+# ]
+#
+# [[apt_mirror.rules]]
+# distribution = "ubuntu"
+# architecture = "amd64"
+# lines = [
+#   "deb https://apt-amd64.internal.example/ubuntu {codename} main restricted universe multiverse",
+#   "deb https://apt-amd64.internal.example/ubuntu {codename}-updates main restricted universe multiverse",
+# ]
 
 # 工具标签检查。只有在具体工具中显式填写 tags = [\"名称\"] 才会执行。
 [tag_checks.proxy]
@@ -333,26 +369,11 @@ install_windows = "cargo install cargo-semver-checks"
 install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
-name = "nvm"
-check_windows = "nvm --version"
-check_linux = "nvm --version"
-install_windows = "winget install -e --id CoreyButler.NVMforWindows"
-install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
-
-[[tools]]
 name = "nodejs"
 check_windows = "node --version && npm --version"
 check_linux = "node --version && npm --version"
 install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
 install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
-
-[[tools]]
-name = "gitnexus"
-tags = ["node20", "npm-mirror"]
-check_windows = "gitnexus --version"
-check_linux = "gitnexus --version"
-install_windows = "npm install -g gitnexus"
-install_linux = "npm install -g gitnexus"
 
 [[tools]]
 name = "cpp2rust-demo"

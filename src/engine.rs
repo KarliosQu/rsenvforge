@@ -118,6 +118,7 @@ mod tests {
             r#"
             [apt_mirror]
             uri = "https://apt.internal.example/{distribution}"
+            lines = []
             suites = ["{codename}", "{codename}-updates"]
             components = ["main", "universe"]
             architectures = ["{architecture}"]
@@ -128,6 +129,10 @@ mod tests {
             distribution = "ubuntu"
             architecture = "amd64"
             uri = "https://amd64.internal.example/ubuntu"
+            lines = [
+              "deb https://amd64.internal.example/ubuntu {codename} main universe",
+              "deb https://amd64.internal.example/ubuntu {codename}-updates main universe",
+            ]
             "#,
         )
         .unwrap();
@@ -153,6 +158,14 @@ mod tests {
             config.apt_mirror.rules[0].uri.as_deref(),
             Some("https://amd64.internal.example/ubuntu")
         );
+        assert_eq!(
+            config.apt_mirror.rules[0].lines,
+            vec![
+                "deb https://amd64.internal.example/ubuntu {codename} main universe".to_string(),
+                "deb https://amd64.internal.example/ubuntu {codename}-updates main universe"
+                    .to_string()
+            ]
+        );
     }
 
     #[test]
@@ -161,7 +174,7 @@ mod tests {
         let light = &config.profiles["light"].tools;
         let standard = &config.profiles["standard"].tools;
         let full = &config.profiles["full"].tools;
-        assert_eq!(full, &vec!["nvm".to_string(), "gitnexus".to_string()]);
+        assert!(full.is_empty());
         assert!(light.contains(&"cargo-llvm-cov".to_string()));
         for tool in [
             "cargo-llvm-cov",
@@ -245,15 +258,6 @@ mod tests {
             .find(|candidate| candidate.name == "nodejs")
             .unwrap();
         assert!(nodejs.tags.is_empty());
-        let gitnexus = config
-            .tools
-            .iter()
-            .find(|candidate| candidate.name == "gitnexus")
-            .unwrap();
-        assert_eq!(
-            gitnexus.tags,
-            vec!["node20".to_string(), "npm-mirror".to_string()]
-        );
     }
 
     #[test]

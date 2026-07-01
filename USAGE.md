@@ -66,7 +66,7 @@ skills = []
 items = []
 
 [profiles.full]
-tools = ["nvm", "gitnexus"]
+tools = []
 skills = []
 items = []
 ```
@@ -125,7 +125,7 @@ check_linux = "git ls-remote https://github.com/example/project.git HEAD"
 | `npm-mirror` | 检查 npm registry 与 `npm ping`。 |
 | `apt-mirror` | Linux 下临时验证 APT 源；Windows 不支持。 |
 
-标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install`、`rustup` 与 `gitnexus` 的 npm 安装命令绑定了相应检查。
+标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install` 与 `rustup` 命令绑定了相应检查。
 
 ## 环境与预安装
 
@@ -193,7 +193,36 @@ architecture = "arm64"
 uri = "https://mirror-arm64.example/ubuntu"
 ```
 
-规则按书写顺序匹配，命中第一条即使用。`distribution`、`codename`、`architecture` 都是可选匹配条件；未在 rule 中填写的 `suites/components/architectures/signed_by/source_file` 会继承 `[apt_mirror]` 中的默认值。
+规则按书写顺序匹配，命中第一条即使用。`distribution`、`codename`、`architecture` 都是可选匹配条件；未在 rule 中填写的 `lines/suites/components/architectures/signed_by/source_file` 会继承 `[apt_mirror]` 中的默认值。
+
+如果内网镜像提供的是传统 `deb ...` 行，而不是拆分后的 URI、suite、component，可以使用 `lines`。顶层 `lines` 是默认值；每条 rule 也可以写自己的 `lines`，命中后会覆盖顶层默认行：
+
+```toml
+[apt_mirror]
+source_file = "/etc/apt/sources.list.d/rsenvforge.list"
+lines = [
+  "deb https://mirror.example/ubuntu {codename} main restricted universe multiverse",
+  "deb https://mirror.example/ubuntu {codename}-updates main restricted universe multiverse",
+]
+
+[[apt_mirror.rules]]
+distribution = "ubuntu"
+architecture = "amd64"
+lines = [
+  "deb https://mirror-amd64.example/ubuntu {codename} main restricted universe multiverse",
+  "deb https://mirror-amd64.example/ubuntu {codename}-updates main restricted universe multiverse",
+]
+
+[[apt_mirror.rules]]
+distribution = "ubuntu"
+architecture = "arm64"
+lines = [
+  "deb https://mirror-arm64.example/ubuntu {codename} main restricted universe multiverse",
+  "deb https://mirror-arm64.example/ubuntu {codename}-updates main restricted universe multiverse",
+]
+```
+
+使用 `lines` 时，`source_file` 应写成 `.list` 文件；使用 `uri/suites/components` 时，`source_file` 应写成 `.sources` 文件。
 
 变量：
 
@@ -213,7 +242,7 @@ sudo rsenvforge apt-mirror apply --config /path/to/rsenvforge.toml
 
 Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，也会在执行安装前准备命令之前询问是否使用内部 APT 镜像。确认后会先验证镜像，再写入 source 文件；拒绝后继续普通安装流程。
 
-`show` 不执行网络请求；`check` 将生成的 Deb822 源文件写入临时目录，再让 `apt-get update` 仅读取该临时源和临时索引目录，验证结束后删除临时目录；`apply` 先完成相同验证，再等待输入 `Y`，随后写入 `source_file`。
+`show` 不执行网络请求；`check` 将生成的 APT 源文件写入临时目录，再让 `apt-get update` 仅读取该临时源和临时索引目录，验证结束后删除临时目录；`apply` 先完成相同验证，再等待输入 `Y`，随后写入 `source_file`。
 
 `apply` 不会替换、删除或禁用 `/etc/apt/sources.list` 和其他 `sources.list.d` 文件。因此默认行为是“新增内网源”，不是“强制只使用内网源”。如需完全切换源，应由运维策略在验证成功后处理旧源文件。rsenvforge 不会设置 `trusted=yes` 或关闭签名校验，`signed_by` 指向的 GPG key 必须由受信任的渠道预先部署。
 
