@@ -207,7 +207,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
-| 工具 | `rust` | `rustup toolchain install stable && rustup component add rustfmt clippy` |
+| 工具 | `rust` | Linux: 无 rustup 时通过 rustup-init 安装 stable；已有 rustup 时安装 stable、rustfmt、clippy |
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
 
 默认配置不再提供 nvm 安装项。Linux 下安装 `nodejs` 时，如果机器已有 nvm，会优先用已有 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。
@@ -348,7 +348,7 @@ install = "cargo install --git https://github.com/example/demo-from-github"
 
 安装某个缺失工具前，工具会按 `tags` 顺序运行标签检查。检查通过后，同一次安装流程中相同标签不会重复检查；检查失败时会询问是否跳过当前工具继续安装。
 
-默认配置提供以下标签检查。其中 `cargo-install` 和 `rustup-mirror` 已按当前工具安装命令显式绑定；其他标签可按需要手动添加：
+默认配置提供以下标签检查。其中 `cargo-install` 已绑定到 `cargo install` 工具，`rustup-mirror` 已绑定到依赖已有 rustup 的组件工具；其他标签可按需要手动添加：
 
 | 标签 | 验证内容 | Windows | Linux |
 | --- | --- | --- | --- |

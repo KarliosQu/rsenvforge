@@ -212,11 +212,11 @@ install_linux = "apt-get update && apt-get install -y build-essential pkg-config
 
 [[tools]]
 name = "rust"
-tags = ["rustup-mirror"]
+tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
 install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
-install_linux = "rustup toolchain install stable && rustup component add rustfmt clippy"
+install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl --proto '=https' --tlsv1.2 -sSf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
 
 [[tools]]
 name = "cargo-llvm-cov"

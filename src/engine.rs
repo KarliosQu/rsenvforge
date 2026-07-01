@@ -244,7 +244,13 @@ mod tests {
                 .unwrap();
             assert_eq!(tool.tags, vec!["cargo-install".to_string()]);
         }
-        for tool in ["rust", "rust-analyzer", "miri"] {
+        let rust = config
+            .tools
+            .iter()
+            .find(|candidate| candidate.name == "rust")
+            .unwrap();
+        assert!(rust.tags.is_empty());
+        for tool in ["rust-analyzer", "miri"] {
             let tool = config
                 .tools
                 .iter()

@@ -125,7 +125,7 @@ check_linux = "git ls-remote https://github.com/example/project.git HEAD"
 | `npm-mirror` | 检查 npm registry 与 `npm ping`。 |
 | `apt-mirror` | Linux 下临时验证 APT 源；Windows 不支持。 |
 
-标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install` 与 `rustup` 命令绑定了相应检查。
+标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install` 工具绑定 `cargo-install`，并为依赖已有 rustup 的组件工具绑定 `rustup-mirror`。
 
 ## 环境与预安装
 
