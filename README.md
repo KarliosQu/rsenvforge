@@ -199,6 +199,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
 | 工具 | `rust-checker-cli` | `cargo install rust-checker-cli` |
+| 工具 | `rustbot-cli` | `cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force` |
 | 工具 | `python` | Windows: winget；Linux: `apt-get install -y python3 python3-pip` |
 | 工具 | `ninja` | Windows: winget；Linux: `apt-get install -y ninja-build` |
 | 工具 | `valgrind` | Linux: `apt-get install -y valgrind`；Windows: 不支持 |
@@ -213,7 +214,9 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
 | 工具 | `gitnexus` | `npm install -g gitnexus`，安装前要求 Node.js >= 20 且 npm registry 可用 |
 
-默认配置会在 `standard` 中安装 nvm。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。
+默认配置会在 `standard` 中安装 nvm。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
+
+`gitnexus` 安装前会运行 `node20` 标签检查，要求当前可用的 Node.js 主版本至少为 20；低于 20 时会停止该工具安装并询问是否跳过。
 
 ### full
 
@@ -294,7 +297,9 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 | `bashrc` | Linux 下 rust 安装完成后追加到 `~/.bashrc` |
 | `npmrc` | 追加写入用户级 `.npmrc`，用于 npm registry、strict-ssl 等配置 |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入，并刷新 rsenvforge 当前安装进程的 `PATH`、`CARGO_HOME` 与 `RUSTUP_HOME`，让后续安装命令可以直接找到 `cargo` 和 `rustup`。
+
+已经打开的父终端环境无法被子进程反向修改。如果 `rsenvforge install` 结束后，当前终端仍找不到 `cargo` 或 `rustup`，请执行 `source ~/.bashrc`、`. "$HOME/.cargo/env"`，或重新打开终端。
 
 Linux 下安装命令优先使用 `bash -lc` 执行，因此可以在 `preinstall` 中使用 `source ~/.bashrc` 让刚写入的环境变量对后续命令生效；如果系统没有 `bash`，会回退到 `sh -c`，此时应使用 `. ~/.bashrc`。
 

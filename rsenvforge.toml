@@ -20,6 +20,7 @@ tools = [
   "cargo-msrv",
   "cargo-semver-checks",
   "rust-checker-cli",
+  "rustbot-cli",
   "python",
   "ninja",
   "valgrind",
@@ -166,8 +167,8 @@ check_windows = "npm --version"
 check_linux = "npm --version"
 
 [tag_checks.node20]
-check_windows = "powershell -NoProfile -Command \"node -e \\\"process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)\\\"\""
-check_linux = "node -e 'process.exit(Number(process.versions.node.split(\".\")[0]) >= 20 ? 0 : 1)'"
+check_windows = "powershell -NoProfile -Command \"node -e \\\"const major = Number(process.versions.node.split('.')[0]); console.log(process.version); process.exit(major >= 20 ? 0 : 1)\\\"\""
+check_linux = "node -e 'const major = Number(process.versions.node.split(\".\")[0]); console.log(process.version); process.exit(major >= 20 ? 0 : 1)'"
 
 # 镜像标签不会自动绑定到工具。需要时请在对应 [[tools]] 中显式填写，
 # 例如：tags = ["cargo-mirror"]。
@@ -334,18 +335,18 @@ install_windows = "cargo install cargo-semver-checks"
 install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
-name = "nodejs"
-check_windows = "node --version && npm --version"
-check_linux = "node --version && npm --version"
-install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
-install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
-
-[[tools]]
 name = "nvm"
 check_windows = "nvm --version"
 check_linux = "nvm --version"
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
 install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
+
+[[tools]]
+name = "nodejs"
+check_windows = "node --version && npm --version"
+check_linux = "node --version && npm --version"
+install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
+install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
 
 [[tools]]
 name = "gitnexus"
@@ -383,3 +384,11 @@ check_windows = "rust-checker-cli --version"
 check_linux = "rust-checker-cli --version"
 install_windows = "cargo install rust-checker-cli"
 install_linux = "cargo install rust-checker-cli"
+
+[[tools]]
+name = "rustbot-cli"
+tags = ["cargo-install"]
+check_windows = "rustbot --version"
+check_linux = "rustbot --version"
+install_windows = "cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force"
+install_linux = "cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force"

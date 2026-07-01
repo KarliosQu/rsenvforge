@@ -7,7 +7,10 @@ use super::apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror};
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
 use super::constants::{CONFIG_FILE, SKILL_FILE};
 use super::discovery::{discover_crates, discover_skills};
-use super::envfile::{apply_after_rust_install_environment, apply_install_start_environment};
+use super::envfile::{
+    apply_after_rust_install_environment, apply_install_start_environment,
+    refresh_node_process_environment,
+};
 use super::error::ForgeError;
 use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_file};
 use super::input::read_user_line;
@@ -453,6 +456,10 @@ impl InstallSession {
     fn installed_nvm_this_run(&self) -> bool {
         self.installed_tools.contains("nvm")
     }
+
+    fn installed_node_this_run(&self) -> bool {
+        self.installed_tools.contains("nodejs")
+    }
 }
 
 fn command_for_install_session(command: &str, session: &InstallSession) -> String {
@@ -464,7 +471,13 @@ fn command_for_install_session_on_platform(
     session: &InstallSession,
     is_linux: bool,
 ) -> String {
-    if !is_linux || !session.installed_nvm_this_run() || !command_uses_nvm(command) {
+    if !is_linux || !command_uses_node_environment(command) {
+        return command.to_string();
+    }
+    if !session.installed_nvm_this_run()
+        && !session.installed_node_this_run()
+        && !command_uses_nvm(command)
+    {
         return command.to_string();
     }
     format!(
@@ -473,9 +486,21 @@ fn command_for_install_session_on_platform(
 }
 
 fn command_uses_nvm(command: &str) -> bool {
+    command_uses_token(command, "nvm")
+}
+
+fn command_uses_node_environment(command: &str) -> bool {
+    ["nvm", "node", "npm"]
+        .iter()
+        .any(|token| command_uses_token(command, token))
+}
+
+fn command_uses_token(command: &str, token: &str) -> bool {
     command
-        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '-'))
-        .any(|part| part == "nvm")
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '-' || character == '_')
+        })
+        .any(|part| part == token)
 }
 
 fn process_profile_tools(
@@ -552,6 +577,15 @@ fn install_tool(
         }
     }
     session.mark_installed(&tool.name);
+    if is_rust_toolchain(&tool.name) {
+        apply_after_rust_install_environment(config)?;
+        println!("Rust 环境已写入配置文件，并已刷新当前安装进程。");
+        println!("如果当前终端仍找不到 cargo/rustup，请执行 source ~/.bashrc 或重新打开终端。");
+    }
+    if is_node_environment_tool(&tool.name) {
+        refresh_node_process_environment();
+        println!("Node.js 环境已刷新到当前安装进程。");
+    }
     run_tool_post_install(tool, session)?;
     println!("工具 {} 安装完成。", tool.name);
     Ok(())
@@ -702,6 +736,10 @@ fn run_preinstall_commands(
 
 fn is_rust_toolchain(name: &str) -> bool {
     name == "rust-toolchain" || name == "rust"
+}
+
+fn is_node_environment_tool(name: &str) -> bool {
+    name == "nvm" || name == "nodejs"
 }
 
 fn install_missing_skills(
@@ -1074,17 +1112,19 @@ fn agents_from_targets(targets: &[PathBuf]) -> Vec<Agent> {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_for_install_session_on_platform, command_uses_nvm, InstallSession};
+    use super::{
+        command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
+        InstallSession,
+    };
 
     #[test]
-    fn only_wraps_nvm_commands_after_nvm_is_installed_by_session() {
+    fn wraps_nvm_commands_after_nvm_is_installed_by_session() {
         let command = "nvm install 20.17.0 && nvm use 20.17.0";
         let mut session = InstallSession::default();
 
-        assert_eq!(
-            command_for_install_session_on_platform(command, &session, true),
-            command
-        );
+        let preexisting_wrapped = command_for_install_session_on_platform(command, &session, true);
+        assert!(preexisting_wrapped.contains("NVM_DIR"));
+        assert!(preexisting_wrapped.ends_with(command));
 
         session.mark_installed("nvm");
         let wrapped = command_for_install_session_on_platform(command, &session, true);
@@ -1098,10 +1138,48 @@ mod tests {
     }
 
     #[test]
+    fn wraps_node_and_npm_commands_after_node_is_installed_by_session() {
+        let mut session = InstallSession::default();
+        let node_check = "node -e 'console.log(process.version)'";
+        let npm_install = "npm install -g gitnexus";
+
+        assert_eq!(
+            command_for_install_session_on_platform(node_check, &session, true),
+            node_check
+        );
+        assert_eq!(
+            command_for_install_session_on_platform(npm_install, &session, true),
+            npm_install
+        );
+
+        session.mark_installed("nodejs");
+        let wrapped_node = command_for_install_session_on_platform(node_check, &session, true);
+        let wrapped_npm = command_for_install_session_on_platform(npm_install, &session, true);
+        assert!(wrapped_node.contains("NVM_DIR"));
+        assert!(wrapped_node.ends_with(node_check));
+        assert!(wrapped_npm.contains("NVM_DIR"));
+        assert!(wrapped_npm.ends_with(npm_install));
+
+        assert_eq!(
+            command_for_install_session_on_platform(npm_install, &session, false),
+            npm_install
+        );
+    }
+
+    #[test]
     fn detects_nvm_as_a_shell_command_token() {
         assert!(command_uses_nvm("nvm --version"));
         assert!(command_uses_nvm("nvm install 20.17.0"));
         assert!(!command_uses_nvm("echo NVM_NODEJS_ORG_MIRROR"));
         assert!(!command_uses_nvm("echo my-nvm-helper"));
+    }
+
+    #[test]
+    fn detects_node_environment_shell_command_tokens() {
+        assert!(command_uses_node_environment("node -e 'console.log(1)'"));
+        assert!(command_uses_node_environment("npm install -g gitnexus"));
+        assert!(command_uses_node_environment("nvm use 20.17.0"));
+        assert!(!command_uses_node_environment("echo npm_config_registry"));
+        assert!(!command_uses_node_environment("echo node-version"));
     }
 }

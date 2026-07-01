@@ -249,6 +249,7 @@ mod tests {
             "cargo-msrv",
             "cargo-semver-checks",
             "rust-checker-cli",
+            "rustbot-cli",
         ] {
             assert!(light.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
@@ -268,6 +269,28 @@ mod tests {
         ] {
             assert!(standard.contains(&tool.to_string()));
         }
+        let nvm_index = standard.iter().position(|tool| tool == "nvm").unwrap();
+        let nodejs_index = standard.iter().position(|tool| tool == "nodejs").unwrap();
+        let gitnexus_index = standard.iter().position(|tool| tool == "gitnexus").unwrap();
+        assert!(nvm_index < nodejs_index);
+        assert!(nodejs_index < gitnexus_index);
+
+        let tool_names = config
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>();
+        let nvm_def_index = tool_names.iter().position(|tool| *tool == "nvm").unwrap();
+        let nodejs_def_index = tool_names
+            .iter()
+            .position(|tool| *tool == "nodejs")
+            .unwrap();
+        let gitnexus_def_index = tool_names
+            .iter()
+            .position(|tool| *tool == "gitnexus")
+            .unwrap();
+        assert!(nvm_def_index < nodejs_def_index);
+        assert!(nodejs_def_index < gitnexus_def_index);
     }
 
     #[test]
@@ -299,6 +322,7 @@ mod tests {
             "cargo-msrv",
             "cargo-semver-checks",
             "rust-checker-cli",
+            "rustbot-cli",
         ] {
             let tool = config
                 .tools

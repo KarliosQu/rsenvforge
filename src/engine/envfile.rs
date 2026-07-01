@@ -31,7 +31,136 @@ pub(crate) fn apply_after_rust_install_environment(
             &config.environment.bashrc,
         )?;
     }
+    refresh_rust_process_environment();
     Ok(())
+}
+
+pub(crate) fn refresh_rust_process_environment() {
+    let cargo_home = env::var_os("CARGO_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".cargo"));
+    let rustup_home = env::var_os("RUSTUP_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".rustup"));
+
+    env::set_var("CARGO_HOME", &cargo_home);
+    env::set_var("RUSTUP_HOME", &rustup_home);
+
+    let added = prepend_process_path([cargo_home.join("bin")], true);
+    if !added.is_empty() {
+        println!("已刷新当前安装进程 Rust 环境：{}", display_paths(&added));
+    }
+}
+
+pub(crate) fn refresh_node_process_environment() {
+    let mut candidates = Vec::new();
+    if cfg!(windows) {
+        push_env_path(&mut candidates, "NVM_HOME");
+        push_env_path(&mut candidates, "NVM_SYMLINK");
+        if let Some(path) = env::var_os("LOCALAPPDATA") {
+            candidates.push(PathBuf::from(path).join("nvm"));
+        }
+        if let Some(path) = env::var_os("APPDATA") {
+            candidates.push(PathBuf::from(path).join("nvm"));
+        }
+        if let Some(path) = env::var_os("ProgramFiles") {
+            candidates.push(PathBuf::from(path).join("nodejs"));
+        }
+        if let Some(path) = env::var_os("ProgramFiles(x86)") {
+            candidates.push(PathBuf::from(path).join("nodejs"));
+        }
+    } else {
+        let nvm_dir = env::var_os("NVM_DIR")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home_dir().join(".nvm"));
+        candidates.push(nvm_dir.join("current").join("bin"));
+        candidates.extend(discover_nvm_node_bins(&nvm_dir));
+    }
+
+    let added = prepend_process_path(candidates, false);
+    if !added.is_empty() {
+        println!("已刷新当前安装进程 Node.js 环境：{}", display_paths(&added));
+    }
+}
+
+fn push_env_path(target: &mut Vec<PathBuf>, name: &str) {
+    if let Some(value) = env::var_os(name).filter(|value| !value.is_empty()) {
+        target.push(PathBuf::from(value));
+    }
+}
+
+fn discover_nvm_node_bins(nvm_dir: &Path) -> Vec<PathBuf> {
+    let versions_dir = nvm_dir.join("versions").join("node");
+    let Ok(entries) = fs::read_dir(&versions_dir) else {
+        return Vec::new();
+    };
+    let mut bins = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|file_type| file_type.is_dir())?;
+            Some(entry.path().join("bin"))
+        })
+        .collect::<Vec<_>>();
+    bins.sort();
+    bins.reverse();
+    bins
+}
+
+fn prepend_process_path(
+    paths: impl IntoIterator<Item = PathBuf>,
+    include_missing: bool,
+) -> Vec<PathBuf> {
+    let mut added: Vec<PathBuf> = Vec::new();
+    let current_path = env::var_os("PATH").unwrap_or_default();
+    let mut existing = env::split_paths(&current_path).collect::<Vec<_>>();
+
+    for path in paths {
+        if path.as_os_str().is_empty() || (!include_missing && !path.exists()) {
+            continue;
+        }
+        if existing.iter().any(|existing| paths_equal(existing, &path))
+            || added.iter().any(|existing| paths_equal(existing, &path))
+        {
+            continue;
+        }
+        added.push(path);
+    }
+
+    if added.is_empty() {
+        return added;
+    }
+
+    let mut new_paths = added.clone();
+    new_paths.append(&mut existing);
+    if let Ok(joined) = env::join_paths(new_paths) {
+        env::set_var("PATH", joined);
+        added
+    } else {
+        Vec::new()
+    }
+}
+
+fn display_paths(paths: &[PathBuf]) -> String {
+    paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn paths_equal(left: &Path, right: &Path) -> bool {
+    if cfg!(windows) {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    } else {
+        left == right
+    }
 }
 
 fn cargo_config_path() -> PathBuf {
@@ -108,8 +237,21 @@ fn write_text(path: &Path, contents: &str) -> Result<(), ForgeError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_lines_if_missing, write_cargo_config_if_empty};
-    use std::fs;
+    use super::{
+        append_lines_if_missing, refresh_node_process_environment,
+        refresh_rust_process_environment, write_cargo_config_if_empty,
+    };
+    use std::sync::Mutex;
+    use std::{env, ffi::OsString, fs};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn restore_env(name: &str, value: Option<OsString>) {
+        match value {
+            Some(value) => env::set_var(name, value),
+            None => env::remove_var(name),
+        }
+    }
 
     #[test]
     fn writes_cargo_config_when_missing_or_empty() {
@@ -185,5 +327,84 @@ mod tests {
         );
 
         fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn refreshes_rust_environment_for_current_process() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp =
+            std::env::temp_dir().join(format!("rsenvforge-envfile-rust-{}", std::process::id()));
+        let cargo_home = temp.join(".cargo");
+        let old_userprofile = env::var_os("USERPROFILE");
+        let old_home = env::var_os("HOME");
+        let old_cargo_home = env::var_os("CARGO_HOME");
+        let old_rustup_home = env::var_os("RUSTUP_HOME");
+        let old_path = env::var_os("PATH");
+
+        env::set_var("USERPROFILE", &temp);
+        env::set_var("HOME", &temp);
+        env::remove_var("CARGO_HOME");
+        env::remove_var("RUSTUP_HOME");
+        env::set_var("PATH", "");
+
+        refresh_rust_process_environment();
+
+        assert_eq!(env::var_os("CARGO_HOME").unwrap(), cargo_home.as_os_str());
+        assert_eq!(
+            env::var_os("RUSTUP_HOME").unwrap(),
+            temp.join(".rustup").as_os_str()
+        );
+        let paths = env::split_paths(&env::var_os("PATH").unwrap()).collect::<Vec<_>>();
+        assert!(paths.iter().any(|path| path == &cargo_home.join("bin")));
+
+        restore_env("USERPROFILE", old_userprofile);
+        restore_env("HOME", old_home);
+        restore_env("CARGO_HOME", old_cargo_home);
+        restore_env("RUSTUP_HOME", old_rustup_home);
+        restore_env("PATH", old_path);
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn refreshes_node_environment_for_current_process() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp =
+            std::env::temp_dir().join(format!("rsenvforge-envfile-node-{}", std::process::id()));
+        let expected_path = if cfg!(windows) {
+            temp.join("nvm")
+        } else {
+            temp.join(".nvm")
+                .join("versions")
+                .join("node")
+                .join("v20.17.0")
+                .join("bin")
+        };
+        fs::create_dir_all(&expected_path).unwrap();
+        let old_userprofile = env::var_os("USERPROFILE");
+        let old_home = env::var_os("HOME");
+        let old_nvm_dir = env::var_os("NVM_DIR");
+        let old_nvm_home = env::var_os("NVM_HOME");
+        let old_path = env::var_os("PATH");
+
+        env::set_var("USERPROFILE", &temp);
+        env::set_var("HOME", &temp);
+        if cfg!(windows) {
+            env::set_var("NVM_HOME", &expected_path);
+        } else {
+            env::remove_var("NVM_DIR");
+        }
+        env::set_var("PATH", "");
+
+        refresh_node_process_environment();
+
+        let paths = env::split_paths(&env::var_os("PATH").unwrap()).collect::<Vec<_>>();
+        assert!(paths.iter().any(|path| path == &expected_path));
+
+        restore_env("USERPROFILE", old_userprofile);
+        restore_env("HOME", old_home);
+        restore_env("NVM_DIR", old_nvm_dir);
+        restore_env("NVM_HOME", old_nvm_home);
+        restore_env("PATH", old_path);
+        let _ = fs::remove_dir_all(temp);
     }
 }
