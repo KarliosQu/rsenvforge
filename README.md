@@ -221,7 +221,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
-| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `RSENVFORGE_RUSTUP_INIT_URL` 调用 rustup-init 安装 stable；已有 rustup 时安装 stable、rustfmt、clippy |
+| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；已有 rustup 时安装 stable、rustfmt、clippy |
 | 工具 | `nvm` | Windows: winget；Linux: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| PROFILE="$HOME/.bashrc" bash` |
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
 | 工具 | `gitnexus` | `npm install -g gitnexus`，安装前要求 Node.js >= 20 且 npm registry 可用 |
@@ -257,7 +257,6 @@ cargo_config = [
   "git-fetch-with-cli = true",
 ]
 bashrc = [
-  "export RSENVFORGE_RUSTUP_INIT_URL=https://rustup.internal.example/rustup-init.sh",
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
   ". \"$HOME/.cargo/env\"",
 ]
@@ -314,7 +313,7 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 | `bashrc` | Linux 下追加到 `~/.bashrc`；其中 `export KEY=value` 也会在本次安装进程中立即生效 |
 | `npmrc` | 追加写入用户级 `.npmrc`，用于 npm registry、strict-ssl 等配置 |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`，并把其中的 `export KEY=value` 注入当前 rsenvforge 安装进程。默认 `rust-toolchain` 使用 `RSENVFORGE_RUSTUP_INIT_URL` 作为 rustup-init 下载地址；如果未设置该变量，会回退到默认地址。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入，并刷新 rsenvforge 当前安装进程的 `PATH`、`CARGO_HOME` 与 `RUSTUP_HOME`，让后续安装命令可以直接找到 `cargo` 和 `rustup`。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`，并把其中的 `export KEY=value` 注入当前 rsenvforge 安装进程。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入，并刷新 rsenvforge 当前安装进程的 `PATH`、`CARGO_HOME` 与 `RUSTUP_HOME`，让后续安装命令可以直接找到 `cargo` 和 `rustup`。
 
 已经打开的父终端环境无法被子进程反向修改。如果 `rsenvforge install` 结束后，当前终端仍找不到 `cargo` 或 `rustup`，请执行 `source ~/.bashrc`、`. "$HOME/.cargo/env"`，或重新打开终端。
 

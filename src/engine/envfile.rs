@@ -373,23 +373,23 @@ mod tests {
     #[test]
     fn applies_export_lines_to_current_process() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let old_url = env::var_os("RSENVFORGE_RUSTUP_INIT_URL");
+        let old_url = env::var_os("RSENVFORGE_TEST_EXPORT_URL");
         let old_quoted = env::var_os("RSENVFORGE_QUOTED_VALUE");
 
         apply_export_lines_to_process(&[
-            "export RSENVFORGE_RUSTUP_INIT_URL=https://mirror.example/rustup-init.sh".to_string(),
+            "export RSENVFORGE_TEST_EXPORT_URL=https://mirror.example/demo.sh".to_string(),
             "export RSENVFORGE_QUOTED_VALUE=\"hello world\"".to_string(),
             "export 1INVALID=ignored".to_string(),
         ]);
 
         assert_eq!(
-            env::var("RSENVFORGE_RUSTUP_INIT_URL").unwrap(),
-            "https://mirror.example/rustup-init.sh"
+            env::var("RSENVFORGE_TEST_EXPORT_URL").unwrap(),
+            "https://mirror.example/demo.sh"
         );
         assert_eq!(env::var("RSENVFORGE_QUOTED_VALUE").unwrap(), "hello world");
         assert!(env::var_os("1INVALID").is_none());
 
-        restore_env("RSENVFORGE_RUSTUP_INIT_URL", old_url);
+        restore_env("RSENVFORGE_TEST_EXPORT_URL", old_url);
         restore_env("RSENVFORGE_QUOTED_VALUE", old_quoted);
     }
 

@@ -16,7 +16,6 @@ cargo_config = [
   "git-fetch-with-cli = true",
 ]
 bashrc = [
-  "export RSENVFORGE_RUSTUP_INIT_URL=https://rsproxy.cn/rustup-init.sh",
   "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
   "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
   # NVM/Node.js 镜像示例：需要使用 nvm 下载镜像时取消注释，并改成内网地址。
@@ -221,7 +220,7 @@ tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
 install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
-install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl -ssf \"${RSENVFORGE_RUSTUP_INIT_URL:-https://rsproxy.cn/rustup-init.sh}\" | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
+install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl -ssf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
 
 [[tools]]
 name = "cargo-llvm-cov"

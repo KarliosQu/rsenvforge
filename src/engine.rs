@@ -347,11 +347,6 @@ mod tests {
             .find(|candidate| candidate.name == "rust-toolchain")
             .unwrap();
         assert!(rust.tags.is_empty());
-        assert!(rust
-            .install_linux
-            .as_deref()
-            .unwrap()
-            .contains("RSENVFORGE_RUSTUP_INIT_URL"));
         for tool in ["rust-analyzer", "miri"] {
             let tool = config
                 .tools

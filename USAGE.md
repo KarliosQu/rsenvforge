@@ -140,7 +140,6 @@ cargo_config = [
   "git-fetch-with-cli = true",
 ]
 bashrc = [
-  "export RSENVFORGE_RUSTUP_INIT_URL=https://rustup.internal.example/rustup-init.sh",
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
   ". \"$HOME/.cargo/env\"",
 ]
@@ -149,7 +148,7 @@ npmrc = [
 ]
 ```
 
-`cargo_config` 写入 Cargo 配置，`bashrc` 写入 Linux 的 `~/.bashrc`，`npmrc` 追加写入用户级 `.npmrc`。`bashrc` 中的 `export KEY=value` 会在当前安装进程中立即生效；默认 `rust-toolchain` 使用 `RSENVFORGE_RUSTUP_INIT_URL` 作为 rustup-init 下载地址。APT 镜像使用独立的 `[apt_mirror]`，因为它需要写入系统 APT source 文件。
+`cargo_config` 写入 Cargo 配置，`bashrc` 写入 Linux 的 `~/.bashrc`，`npmrc` 追加写入用户级 `.npmrc`。`bashrc` 中的 `export KEY=value` 会在当前安装进程中立即生效。APT 镜像使用独立的 `[apt_mirror]`，因为它需要写入系统 APT source 文件。
 
 `[preinstall.<profile>.<platform>]` 用于工具安装前的命令：
 
