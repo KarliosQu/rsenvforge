@@ -421,12 +421,7 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     }
     builtin.preinstall = config.preinstall;
     builtin.environment = config.environment;
-    if config.apt_mirror.uri.is_some()
-        || !config.apt_mirror.lines.is_empty()
-        || !config.apt_mirror.rules.is_empty()
-    {
-        builtin.apt_mirror = config.apt_mirror;
-    }
+    builtin.apt_mirror = config.apt_mirror;
     for (tag, check) in config.tag_checks {
         builtin.tag_checks.insert(tag, check);
     }

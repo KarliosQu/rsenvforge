@@ -285,6 +285,44 @@ mod tests {
     }
 
     #[test]
+    fn custom_config_without_apt_mirror_does_not_inherit_builtin_mirror() {
+        let _guard = CWD_LOCK.lock().unwrap();
+        let temp = test_dir("custom_config_without_apt_mirror_does_not_inherit_builtin_mirror");
+        let config = temp.join(CONFIG_FILE);
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(
+            &config,
+            r#"
+            [profiles.light]
+            tools = []
+            skills = []
+            items = []
+
+            [profiles.standard]
+            tools = []
+            skills = []
+            items = []
+
+            [profiles.full]
+            tools = []
+            skills = []
+            items = []
+            "#,
+        )
+        .unwrap();
+
+        let builtin = parse_config(BUILTIN_CONFIG).unwrap();
+        let loaded = load_config(Some(&config)).unwrap();
+
+        fs::remove_dir_all(temp).unwrap();
+
+        assert!(builtin.apt_mirror.uri.is_some());
+        assert!(loaded.config.apt_mirror.uri.is_none());
+        assert!(loaded.config.apt_mirror.lines.is_empty());
+        assert!(loaded.config.apt_mirror.rules.is_empty());
+    }
+
+    #[test]
     fn zero_check_marks_tool_as_unsupported() {
         let config = parse_config(
             r#"

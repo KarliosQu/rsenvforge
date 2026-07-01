@@ -64,26 +64,22 @@ commands = []
 # npmrc 会追加到用户级 .npmrc。下面的镜像行默认保持注释，不参与安装。
 [environment]
 cargo_config = [
-  # Cargo 镜像示例：需要启用时取消下面四行注释，并改成内网地址。
-  # "[source.crates-io]",
-  # "replace-with = \"mirror\"",
-  # "[source.mirror]",
-  # "registry = \"sparse+https://mirror.com/crates.io-index/\"",
+  "[source.crates-io]",
+  "replace-with = \"rsproxy\"",
+  "[source.rsproxy]",
+  "registry = \"sparse+https://rsproxy.cn/index/\"",
   "[net]",
   "git-fetch-with-cli = true",
 ]
 bashrc = [
-  # Rustup 镜像示例：需要启用时取消下面两行注释，并改成内网地址。
-  # "export RUSTUP_DIST_SERVER=https://mirror.com/rustup",
-  # "export RUSTUP_UPDATE_ROOT=https://mirror.com/rustup/rustup",
+  "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
+  "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
   # NVM/Node.js 镜像示例：仅用于机器已经安装 nvm 的环境；默认配置不会安装 nvm。
   # "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
-  # npm 镜像示例：需要启用时取消下面两行注释，并改成内网地址。
-  # "registry=https://mirror.com/npm/",
-  # "strict-ssl=false",
+  "registry=https://registry.npmmirror.com/",
 ]
 
 # 内部 APT 镜像配置独立于 [environment]，因为它会生成系统 APT source 文件。
@@ -99,6 +95,13 @@ npmrc = [
 # 验证通过后，再执行：
 # rsenvforge apt-mirror apply
 #
+[apt_mirror]
+uri = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu"
+suites = ["{codename}", "{codename}-updates", "{codename}-security"]
+components = ["main", "restricted", "universe", "multiverse"]
+architectures = ["{architecture}"]
+source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
+
 # 方式一：Deb822 .sources 模式。适合同一组 URI/suites/components 的镜像。
 # [apt_mirror]
 # uri = "https://apt.internal.example/{distribution}"
