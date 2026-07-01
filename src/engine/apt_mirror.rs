@@ -33,7 +33,7 @@ pub fn apt_mirror_preview(config: &InstallConfig) -> Result<AptMirrorPreview, Fo
 
 pub fn check_apt_mirror(preview: &AptMirrorPreview) -> Result<(), ForgeError> {
     let temp_dir = temp_dir("apt-mirror-check")?;
-    let source_file = temp_dir.join("rsenvforge.sources");
+    let source_file = temp_dir.join(check_source_file_name(preview));
     let lists_dir = temp_dir.join("lists");
     let result = (|| {
         create_dir_all(&lists_dir.join("partial"))?;
@@ -72,6 +72,19 @@ pub fn check_apt_mirror(preview: &AptMirrorPreview) -> Result<(), ForgeError> {
         );
     }
     result
+}
+
+fn check_source_file_name(preview: &AptMirrorPreview) -> &'static str {
+    if preview
+        .source_file
+        .extension()
+        .and_then(|extension| extension.to_str())
+        == Some("list")
+    {
+        "rsenvforge.list"
+    } else {
+        "rsenvforge.sources"
+    }
 }
 
 pub fn apply_apt_mirror(preview: &AptMirrorPreview) -> Result<(), ForgeError> {
@@ -495,5 +508,18 @@ mod tests {
             preview.source_file,
             std::path::PathBuf::from("/etc/apt/sources.list.d/rsenvforge.list")
         );
+    }
+
+    #[test]
+    fn uses_legacy_extension_for_checking_legacy_lines() {
+        let preview = super::AptMirrorPreview {
+            distribution: "ubuntu".to_string(),
+            codename: "noble".to_string(),
+            architecture: "amd64".to_string(),
+            source_file: std::path::PathBuf::from("/etc/apt/sources.list.d/rsenvforge.list"),
+            source_contents: "deb https://example.test/ubuntu noble main\n".to_string(),
+        };
+
+        assert_eq!(super::check_source_file_name(&preview), "rsenvforge.list");
     }
 }
