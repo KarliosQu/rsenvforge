@@ -18,8 +18,9 @@ cargo_config = [
 bashrc = [
   "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
   "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
-  # NVM/Node.js 镜像示例：需要使用 nvm 下载镜像时取消注释，并改成内网地址。
-  # "export NVM_NODEJS_ORG_MIRROR=https://mirror.com/nodejs",
+  # NVM 本体安装包地址和 Node.js 下载镜像地址可以不同，请按内网实际地址分别修改。
+  "export RSENVFORGE_NVM_TARBALL_URL=http://7.222.7.221/package/nvm-v0.40.5.tar.gz",
+  "export NVM_NODEJS_ORG_MIRROR=http://7.222.7.221/nodejs",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
@@ -47,6 +48,8 @@ commands = []
 
 [profiles.light]
 tools = [
+  "gnu",
+  "msvc",
   "cargo-llvm-cov",
   "bindgen-cli",
   "cargo-audit",
@@ -208,6 +211,20 @@ check_linux = "npm --version || exit $?; registry=$(npm config get registry); te
 # install_linux = "cargo install my-cargo-tool"
 
 [[tools]]
+name = "gnu"
+check_windows = "gcc --version"
+check_linux = "0"
+install_windows = "winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT"
+install_linux = "0"
+
+[[tools]]
+name = "msvc"
+check_windows = "powershell -NoProfile -Command \"$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'; $cl = Get-Command cl.exe -ErrorAction SilentlyContinue; if ($cl) { cl.exe 2>&1 | Select-Object -First 1; exit 0 }; if (Test-Path $vswhere) { $version = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion; if ($LASTEXITCODE -eq 0 -and $version) { Write-Output ('Visual Studio C++ Build Tools ' + $version); exit 0 } }; exit 1\""
+check_linux = "0"
+install_windows = "winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override \"--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\""
+install_linux = "0"
+
+[[tools]]
 name = "rust-build-base"
 check_windows = "0"
 check_linux = "dpkg -s build-essential pkg-config libssl-dev"
@@ -337,9 +354,9 @@ install_linux = "cargo install cargo-semver-checks"
 [[tools]]
 name = "nvm"
 check_windows = "nvm --version"
-check_linux = "nvm --version"
+check_linux = ". \"$HOME/.bashrc\" >/dev/null 2>&1 || true; export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm --version && test -n \"$RSENVFORGE_NVM_TARBALL_URL\" && test -n \"$NVM_NODEJS_ORG_MIRROR\""
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
-install_linux = "set -o pipefail && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE=\"$HOME/.bashrc\" bash"
+install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; test -n \"$RSENVFORGE_NVM_TARBALL_URL\" && mkdir -p \"$HOME/.nvm\" && curl -fsSL \"$RSENVFORGE_NVM_TARBALL_URL\" | tar -xz --strip-components=1 -C \"$HOME/.nvm\" && touch \"$HOME/.bashrc\" && if ! grep -q 'RSENVFORGE_NVM_TARBALL_URL' \"$HOME/.bashrc\"; then printf '\\nexport NVM_DIR=\"$HOME/.nvm\"\\n[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"\\nexport RSENVFORGE_NVM_TARBALL_URL=%s\\nexport NVM_NODEJS_ORG_MIRROR=%s\\n' \"$RSENVFORGE_NVM_TARBALL_URL\" \"$NVM_NODEJS_ORG_MIRROR\" >> \"$HOME/.bashrc\"; fi"
 
 [[tools]]
 name = "nodejs"
@@ -353,8 +370,8 @@ name = "gitnexus"
 tags = ["node20", "npm-mirror"]
 check_windows = "gitnexus --version"
 check_linux = "gitnexus --version"
-install_windows = "npm install -g gitnexus"
-install_linux = "npm install -g gitnexus"
+install_windows = "npm install -g gitnexus --ignore-scripts"
+install_linux = "npm install -g gitnexus --ignore-scripts"
 
 [[tools]]
 name = "python"

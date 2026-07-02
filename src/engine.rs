@@ -232,6 +232,10 @@ mod tests {
         let standard = &config.profiles["standard"].tools;
         let full = &config.profiles["full"].tools;
         assert!(full.is_empty());
+        for tool in ["gnu", "msvc"] {
+            assert!(light.contains(&tool.to_string()));
+            assert!(config.tools.iter().any(|candidate| candidate.name == tool));
+        }
         assert!(light.contains(&"cargo-llvm-cov".to_string()));
         for tool in [
             "cargo-llvm-cov",
@@ -376,6 +380,16 @@ mod tests {
             gitnexus.tags,
             vec!["node20".to_string(), "npm-mirror".to_string()]
         );
+        assert!(gitnexus
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("--ignore-scripts"));
+        assert!(gitnexus
+            .install_windows
+            .as_deref()
+            .unwrap()
+            .contains("--ignore-scripts"));
     }
 
     #[test]

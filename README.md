@@ -188,7 +188,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 
 三个等级按顺序累积安装配置文件中的工具清单：
 
-- `light`：Cargo/Rust 辅助工具、Python、Ninja 与 Valgrind。
+- `light`：Windows Rust 编译工具链、Cargo/Rust 辅助工具、Python、Ninja 与 Valgrind。
 - `standard`：包含 `light`，并追加 Rust 构建基础、Rust toolchain 与 Node.js 环境。
 - `full`：包含 `light + standard`，并追加自定义全量工具；当前默认追加项为空。
 
@@ -196,6 +196,8 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
+| 工具 | `gnu` | Windows: `winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT`；Linux: 不支持 |
+| 工具 | `msvc` | Windows: `winget install -e --id Microsoft.VisualStudio.2022.BuildTools` 并安装 C++ Build Tools；Linux: 不支持 |
 | 工具 | `cargo-llvm-cov` | `cargo install cargo-llvm-cov` |
 | 工具 | `bindgen-cli` | `cargo install bindgen-cli` |
 | 工具 | `cargo-audit` | `cargo install cargo-audit` |
@@ -221,14 +223,16 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
-| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；已有 rustup 时安装 stable、rustfmt、clippy |
-| 工具 | `nvm` | Windows: winget；Linux: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh \| PROFILE="$HOME/.bashrc" bash` |
+| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；Windows: 已有 MSVC 时安装 `stable-x86_64-pc-windows-msvc`，只有 GNU 时安装 `stable-x86_64-pc-windows-gnu`，两者都没有时先补 GNU |
+| 工具 | `nvm` | Windows: winget；Linux: 从内网 `nvm-v0.40.5.tar.gz` 解压到 `~/.nvm`，并配置 `NVM_NODEJS_ORG_MIRROR` |
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
-| 工具 | `gitnexus` | `npm install -g gitnexus`，安装前要求 Node.js >= 20 且 npm registry 可用 |
+| 工具 | `gitnexus` | `npm install -g gitnexus --ignore-scripts`，安装前要求 Node.js >= 20 且 npm registry 可用 |
 
-默认配置会在 `standard` 中安装 nvm。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
+默认配置会在 `standard` 中安装 nvm。Linux 下 `nvm` 工具只安装 nvm 本体，并分别读取 `RSENVFORGE_NVM_TARBALL_URL` 和 `NVM_NODEJS_ORG_MIRROR`，不会自动下载 Node.js。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
 
-`gitnexus` 安装前会运行 `node20` 标签检查，要求当前可用的 Node.js 主版本至少为 20；低于 20 时会停止该工具安装并询问是否跳过。
+`gitnexus` 安装前会运行 `node20` 标签检查，要求当前可用的 Node.js 主版本至少为 20；低于 20 时会停止该工具安装并询问是否跳过。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
+
+Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
 
 ### full
 
@@ -293,6 +297,24 @@ post_install_linux = "node --version && npm --version"
 name = "superpowers"
 source = "https://github.com/obra/superpowers.git"
 agents = ["claude", "opencode"]
+```
+
+只安装 nvm 并配置内网 Node.js 镜像时，可以使用默认配置中的 `nvm` 工具。nvm 安装包地址和 Node.js 镜像地址是两个独立变量：
+
+```bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+export RSENVFORGE_NVM_TARBALL_URL=http://7.222.7.221/package/nvm-v0.40.5.tar.gz
+export NVM_NODEJS_ORG_MIRROR=http://7.222.7.221/nodejs
+```
+
+`RSENVFORGE_NVM_TARBALL_URL` 用于下载 nvm 本体压缩包；`NVM_NODEJS_ORG_MIRROR` 用于后续 `nvm install` 下载 Node.js。两者可以指向完全不同的内网服务。
+
+该工具不会执行 `nvm install`。如需下载 Node.js，请单独安装 `nodejs` 工具，或在 nvm 安装完成后手动执行：
+
+```bash
+nvm install 20.17.0
+nvm use 20.17.0
 ```
 
 `preinstall` 支持全局和分级两种写法。全局写法是 `[preinstall.linux]` / `[preinstall.windows]`，分级写法是 `[preinstall.light.linux]`、`[preinstall.standard.linux]`、`[preinstall.full.linux]`，Windows 同理。

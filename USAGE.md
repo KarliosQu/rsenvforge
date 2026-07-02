@@ -129,6 +129,8 @@ check_linux = "git ls-remote https://github.com/example/project.git HEAD"
 
 标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install` 工具绑定 `cargo-install`，并为依赖已有 rustup 的组件工具绑定 `rustup-mirror`。
 
+默认 `nvm` 工具只安装 nvm 本体并配置镜像，不会下载 Node.js。需要内网安装时，请分别修改 `rsenvforge.toml` 中的 `RSENVFORGE_NVM_TARBALL_URL` 和 `NVM_NODEJS_ORG_MIRROR`：前者用于下载 nvm 压缩包，后者用于后续 `nvm install` 下载 Node.js。
+
 ## 环境与预安装
 
 `[environment]` 在 Rust 安装后可写入 Cargo 配置和 `~/.bashrc`：
