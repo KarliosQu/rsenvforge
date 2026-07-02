@@ -376,12 +376,19 @@ mod tests {
             .iter()
             .find(|candidate| candidate.name == "gitnexus")
             .unwrap();
-        assert_eq!(
-            gitnexus.tags,
-            vec!["node20".to_string(), "npm-mirror".to_string()]
-        );
+        assert_eq!(gitnexus.tags, vec!["npm-mirror".to_string()]);
         assert!(gitnexus
             .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("--ignore-scripts"));
+        assert!(gitnexus
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("nvm install 20.17.0"));
+        assert!(gitnexus
+            .install_windows
             .as_deref()
             .unwrap()
             .contains("--ignore-scripts"));
@@ -389,7 +396,7 @@ mod tests {
             .install_windows
             .as_deref()
             .unwrap()
-            .contains("--ignore-scripts"));
+            .contains("nvm install 20.17.0"));
     }
 
     #[test]

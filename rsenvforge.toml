@@ -367,11 +367,11 @@ install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && 
 
 [[tools]]
 name = "gitnexus"
-tags = ["node20", "npm-mirror"]
+tags = ["npm-mirror"]
 check_windows = "gitnexus --version"
 check_linux = "gitnexus --version"
-install_windows = "npm install -g gitnexus --ignore-scripts"
-install_linux = "npm install -g gitnexus --ignore-scripts"
+install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0 && npm install -g gitnexus --ignore-scripts"
+install_linux = "nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0 && npm install -g gitnexus --ignore-scripts"
 
 [[tools]]
 name = "python"

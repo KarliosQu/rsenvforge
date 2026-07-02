@@ -226,11 +226,11 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；Windows: 已有 MSVC 时安装 `stable-x86_64-pc-windows-msvc`，只有 GNU 时安装 `stable-x86_64-pc-windows-gnu`，两者都没有时先补 GNU |
 | 工具 | `nvm` | Windows: winget；Linux: 从内网 `nvm-v0.40.5.tar.gz` 解压到 `~/.nvm`，并配置 `NVM_NODEJS_ORG_MIRROR` |
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
-| 工具 | `gitnexus` | `npm install -g gitnexus --ignore-scripts`，安装前要求 Node.js >= 20 且 npm registry 可用 |
+| 工具 | `gitnexus` | 安装前通过 nvm 启用 Node.js 20.17.0，再执行 `npm install -g gitnexus --ignore-scripts` |
 
 默认配置会在 `standard` 中安装 nvm。Linux 下 `nvm` 工具只安装 nvm 本体，并分别读取 `RSENVFORGE_NVM_TARBALL_URL` 和 `NVM_NODEJS_ORG_MIRROR`，不会自动下载 Node.js。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
 
-`gitnexus` 安装前会运行 `node20` 标签检查，要求当前可用的 Node.js 主版本至少为 20；低于 20 时会停止该工具安装并询问是否跳过。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
+`gitnexus` 安装前会先通过 nvm 安装并启用 Node.js 20.17.0，因此系统 apt 提供的低版本 Node.js 不会影响 gitnexus 安装。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
 
 Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
 
@@ -412,7 +412,7 @@ install = "cargo install --git https://github.com/example/demo-from-github"
 tags = ["cargo-install", "cargo-mirror"]
 ```
 
-以后添加 `npm install`、`npm ci` 等命令时，可为对应工具显式添加 `node20` 和 `npm-mirror`。如果 Node.js 主版本低于 20，`node20` 检查会失败，并询问是否跳过当前工具。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
+以后添加 `npm install`、`npm ci` 等命令时，可按工具实际要求显式添加 `node20` 和 `npm-mirror`。如果 Node.js 主版本低于 20，`node20` 检查会失败，并询问是否跳过当前工具。`gitnexus` 不使用 `node20` 标签，而是在安装命令中通过 nvm 启用 Node.js 20.17.0。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
 
 ## Skill 安装
 
