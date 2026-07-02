@@ -703,6 +703,7 @@ struct SelectionChoice {
     kind: SelectionKind,
     label: String,
     selected: bool,
+    selectable: bool,
 }
 
 fn select_install_components(preview: &InstallPreview) -> Result<InstallSelection, ForgeError> {
@@ -726,28 +727,69 @@ fn select_install_components(preview: &InstallPreview) -> Result<InstallSelectio
 
 fn selectable_install_choices(preview: &InstallPreview) -> Vec<SelectionChoice> {
     let mut choices = Vec::new();
-    choices.extend(
-        preview
-            .missing_tools()
-            .into_iter()
-            .filter(|status| status.installable)
-            .map(|status| SelectionChoice {
-                kind: SelectionKind::Tool(status.name.clone()),
-                label: format!("工具：{}", status.name),
-                selected: default_tool_selected(status, preview),
-            }),
-    );
-    choices.extend(
-        preview
-            .missing_skills()
-            .into_iter()
-            .map(|status| SelectionChoice {
-                kind: SelectionKind::Skill(status.name.clone(), status.agent),
-                label: format!("Skill：{} -> {}", status.name, status.agent.as_str()),
-                selected: true,
-            }),
-    );
+    choices.extend(preview.tools.iter().map(|status| {
+        let selectable = status.supported && !status.installed && status.installable;
+        SelectionChoice {
+            kind: SelectionKind::Tool(status.name.clone()),
+            label: tool_selection_label(status),
+            selected: selectable && default_tool_selected(status, preview),
+            selectable,
+        }
+    }));
+    choices.extend(preview.skills.iter().map(|status| {
+        let selectable = !status.installed && status.installable;
+        SelectionChoice {
+            kind: SelectionKind::Skill(status.name.clone(), status.agent),
+            label: skill_selection_label(status),
+            selected: selectable,
+            selectable,
+        }
+    }));
     choices
+}
+
+fn tool_selection_label(status: &ToolStatus) -> String {
+    if !status.supported {
+        return format!(
+            "工具：{}（不支持{}环境）",
+            status.name,
+            current_platform_name()
+        );
+    }
+    if status.installed {
+        return format!(
+            "工具：{}（已安装：{}）",
+            status.name,
+            status.version.as_deref().unwrap_or("无法读取版本")
+        );
+    }
+    if status.installable {
+        format!("工具：{}（尚未安装）", status.name)
+    } else {
+        format!("工具：{}（尚未安装，缺少安装命令）", status.name)
+    }
+}
+
+fn skill_selection_label(status: &SkillStatus) -> String {
+    if status.installed {
+        return format!(
+            "Skill：{} -> {}（已安装）",
+            status.name,
+            status.agent.as_str()
+        );
+    }
+    if !status.installable {
+        return format!(
+            "Skill：{} -> {}（未找到默认 skill 文件夹）",
+            status.name,
+            status.agent.as_str()
+        );
+    }
+    format!(
+        "Skill：{} -> {}（尚未安装）",
+        status.name,
+        status.agent.as_str()
+    )
 }
 
 fn default_tool_selected(status: &ToolStatus, preview: &InstallPreview) -> bool {
@@ -822,13 +864,20 @@ fn run_selection_event_loop(
             }
             KeyCode::Char(' ') => {
                 if let Some(choice) = choices.get_mut(cursor_index) {
-                    choice.selected = !choice.selected;
+                    if choice.selectable {
+                        choice.selected = !choice.selected;
+                    }
                 }
             }
             KeyCode::Char('a') | KeyCode::Char('A') => {
-                let all_selected = choices.iter().all(|choice| choice.selected);
+                let all_selected = choices
+                    .iter()
+                    .filter(|choice| choice.selectable)
+                    .all(|choice| choice.selected);
                 for choice in choices.iter_mut() {
-                    choice.selected = !all_selected;
+                    if choice.selectable {
+                        choice.selected = !all_selected;
+                    }
                 }
             }
             KeyCode::Enter => return Ok(selection_from_choices(choices)),
@@ -861,12 +910,12 @@ fn render_selection_menu(
 
     write_menu_line(
         stdout,
-        "请选择本次要安装的组件（空格切换，Enter 确认）",
+        "请选择本次要安装的组件（空格选择，Enter 确认）",
         width,
     )?;
     write_menu_line(
         stdout,
-        "操作：↑/↓ 移动，Space 切换，A 全选/全不选，Esc/Q 取消",
+        "操作：↑/↓ 移动，Space 选择/取消选择，A 全选/全不选，Esc/Q 取消",
         width,
     )?;
     write_menu_line(
@@ -878,7 +927,13 @@ fn render_selection_menu(
 
     for (index, choice) in choices.iter().enumerate().take(end).skip(start) {
         let cursor = if index == cursor_index { ">" } else { " " };
-        let mark = if choice.selected { "x" } else { " " };
+        let mark = if !choice.selectable {
+            "-"
+        } else if choice.selected {
+            "x"
+        } else {
+            " "
+        };
         write_menu_line(
             stdout,
             &format!("{cursor} [{mark}] {}", choice.label),
@@ -975,7 +1030,10 @@ fn selection_from_choices(choices: &[SelectionChoice]) -> InstallSelection {
         tools: BTreeSet::new(),
         skills: BTreeSet::new(),
     };
-    for choice in choices.iter().filter(|choice| choice.selected) {
+    for choice in choices
+        .iter()
+        .filter(|choice| choice.selectable && choice.selected)
+    {
         match &choice.kind {
             SelectionKind::Tool(name) => {
                 selection.tools.insert(name.clone());
@@ -1762,8 +1820,10 @@ fn agents_from_targets(targets: &[PathBuf]) -> Vec<Agent> {
 mod tests {
     use super::{
         command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
-        display_width, fit_display_width, selection_window, InstallSession,
+        display_width, fit_display_width, selectable_install_choices, selection_from_choices,
+        selection_window, InstallSession,
     };
+    use crate::engine::models::{Agent, InstallPreview, SkillStatus, ToolStatus};
 
     #[test]
     fn wraps_nvm_commands_after_nvm_is_installed_by_session() {
@@ -1845,5 +1905,60 @@ mod tests {
         let fitted = fit_display_width("工具：rust-toolchain-extra-long-name", 12);
         assert!(display_width(&fitted) <= 12);
         assert!(fitted.ends_with("..."));
+    }
+
+    #[test]
+    fn selection_menu_lists_installed_items_as_disabled() {
+        let preview = InstallPreview {
+            tools: vec![
+                ToolStatus {
+                    name: "installed-tool".to_string(),
+                    installed: true,
+                    version: Some("installed-tool 1.0.0".to_string()),
+                    installable: true,
+                    supported: true,
+                },
+                ToolStatus {
+                    name: "missing-tool".to_string(),
+                    installed: false,
+                    version: None,
+                    installable: true,
+                    supported: true,
+                },
+            ],
+            skills: vec![
+                SkillStatus {
+                    name: "installed-skill".to_string(),
+                    agent: Agent::Claude,
+                    agent_dir: None,
+                    installed: true,
+                    installable: true,
+                },
+                SkillStatus {
+                    name: "missing-skill".to_string(),
+                    agent: Agent::OpenCode,
+                    agent_dir: None,
+                    installed: false,
+                    installable: true,
+                },
+            ],
+        };
+
+        let choices = selectable_install_choices(&preview);
+        assert_eq!(choices.len(), 4);
+        assert!(!choices[0].selectable);
+        assert!(!choices[0].selected);
+        assert!(choices[0].label.contains("已安装：installed-tool 1.0.0"));
+        assert!(choices[1].selectable);
+        assert!(choices[1].selected);
+        assert!(!choices[2].selectable);
+        assert!(choices[2].label.contains("已安装"));
+        assert!(choices[3].selectable);
+
+        let selection = selection_from_choices(&choices);
+        assert!(selection.includes_tool("missing-tool"));
+        assert!(!selection.includes_tool("installed-tool"));
+        assert!(selection.includes_skill("missing-skill", Agent::OpenCode));
+        assert!(!selection.includes_skill("installed-skill", Agent::Claude));
     }
 }
