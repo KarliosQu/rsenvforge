@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode};
 use crossterm::execute;
-use crossterm::terminal::{self, ClearType};
+use crossterm::terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 
 use super::apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror};
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
@@ -779,12 +779,16 @@ fn run_interactive_selection_menu(
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()
         .map_err(|error| ForgeError::Command(format!("无法启用交互选择模式：{error}")))?;
-    execute!(stdout, cursor::Hide)
-        .map_err(|error| ForgeError::Command(format!("无法绘制安装选择菜单：{error}")))?;
+    if let Err(error) = execute!(stdout, EnterAlternateScreen, cursor::Hide) {
+        let _ = terminal::disable_raw_mode();
+        return Err(ForgeError::Command(format!(
+            "无法绘制安装选择菜单：{error}"
+        )));
+    }
 
     let result = run_selection_event_loop(choices, &mut stdout);
 
-    let _ = execute!(stdout, cursor::Show);
+    let _ = execute!(stdout, cursor::Show, LeaveAlternateScreen);
     let _ = terminal::disable_raw_mode();
     println!();
 
@@ -844,30 +848,124 @@ fn render_selection_menu(
     cursor_index: usize,
     stdout: &mut io::Stdout,
 ) -> Result<(), ForgeError> {
+    let (terminal_width, terminal_height) = terminal::size().unwrap_or((80, 24));
+    let width = usize::from(terminal_width.saturating_sub(1)).max(20);
+    let visible_count = usize::from(terminal_height).saturating_sub(5).max(1);
+    let (start, end) = selection_window(cursor_index, choices.len(), visible_count);
     execute!(
         stdout,
         cursor::MoveTo(0, 0),
-        terminal::Clear(ClearType::FromCursorDown)
+        terminal::Clear(ClearType::All)
     )
     .map_err(|error| ForgeError::Command(format!("绘制安装选择菜单失败：{error}")))?;
-    writeln!(stdout, "请选择本次要安装的组件")
-        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
-    writeln!(
+
+    write_menu_line(
         stdout,
-        "操作：Up/Down 移动，Space 切换，A 全选/全不选，Enter 确认，Esc/Q 取消"
-    )
-    .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
-    writeln!(stdout)
-        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
-    for (index, choice) in choices.iter().enumerate() {
+        "请选择本次要安装的组件（空格切换，Enter 确认）",
+        width,
+    )?;
+    write_menu_line(
+        stdout,
+        "操作：↑/↓ 移动，Space 切换，A 全选/全不选，Esc/Q 取消",
+        width,
+    )?;
+    write_menu_line(
+        stdout,
+        &format!("组件：{}-{} / {}", start + 1, end, choices.len()),
+        width,
+    )?;
+    write_menu_line(stdout, "", width)?;
+
+    for (index, choice) in choices.iter().enumerate().take(end).skip(start) {
         let cursor = if index == cursor_index { ">" } else { " " };
         let mark = if choice.selected { "x" } else { " " };
-        writeln!(stdout, "{cursor} [{mark}] {}", choice.label)
-            .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
+        write_menu_line(
+            stdout,
+            &format!("{cursor} [{mark}] {}", choice.label),
+            width,
+        )?;
     }
+    write_menu_line(stdout, "", width)?;
+    let above = start;
+    let below = choices.len().saturating_sub(end);
+    write_menu_line(
+        stdout,
+        &format!("上方 {above} 项，下方 {below} 项。列表较长时会自动分页。"),
+        width,
+    )?;
     stdout
         .flush()
         .map_err(|error| ForgeError::Command(format!("刷新安装选择菜单失败：{error}")))
+}
+
+fn write_menu_line(stdout: &mut io::Stdout, text: &str, width: usize) -> Result<(), ForgeError> {
+    writeln!(stdout, "{}", fit_display_width(text, width))
+        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))
+}
+
+fn selection_window(cursor_index: usize, total: usize, visible_count: usize) -> (usize, usize) {
+    if total <= visible_count {
+        return (0, total);
+    }
+    let half = visible_count / 2;
+    let mut start = cursor_index.saturating_sub(half);
+    if start + visible_count > total {
+        start = total - visible_count;
+    }
+    (start, start + visible_count)
+}
+
+fn fit_display_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if display_width(text) <= max_width {
+        return text.to_string();
+    }
+    if max_width <= 3 {
+        return take_display_width(text, max_width);
+    }
+    let mut output = take_display_width(text, max_width - 3);
+    output.push_str("...");
+    output
+}
+
+fn take_display_width(text: &str, max_width: usize) -> String {
+    let mut output = String::new();
+    let mut width = 0usize;
+    for ch in text.chars() {
+        let char_width = display_char_width(ch);
+        if width + char_width > max_width {
+            break;
+        }
+        width += char_width;
+        output.push(ch);
+    }
+    output
+}
+
+fn display_width(text: &str) -> usize {
+    text.chars().map(display_char_width).sum()
+}
+
+fn display_char_width(ch: char) -> usize {
+    if ch.is_control() {
+        return 0;
+    }
+    let code = ch as u32;
+    if (0x1100..=0x115f).contains(&code)
+        || (0x2e80..=0xa4cf).contains(&code)
+        || (0xac00..=0xd7a3).contains(&code)
+        || (0xf900..=0xfaff).contains(&code)
+        || (0xfe10..=0xfe19).contains(&code)
+        || (0xfe30..=0xfe6f).contains(&code)
+        || (0xff00..=0xff60).contains(&code)
+        || (0xffe0..=0xffe6).contains(&code)
+    {
+        2
+    } else {
+        1
+    }
 }
 
 fn selection_from_choices(choices: &[SelectionChoice]) -> InstallSelection {
@@ -1662,7 +1760,7 @@ fn agents_from_targets(targets: &[PathBuf]) -> Vec<Agent> {
 mod tests {
     use super::{
         command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
-        InstallSession,
+        display_width, fit_display_width, selection_window, InstallSession,
     };
 
     #[test]
@@ -1729,5 +1827,21 @@ mod tests {
         assert!(command_uses_node_environment("nvm use 20.17.0"));
         assert!(!command_uses_node_environment("echo npm_config_registry"));
         assert!(!command_uses_node_environment("echo node-version"));
+    }
+
+    #[test]
+    fn selection_window_keeps_cursor_visible_for_long_lists() {
+        assert_eq!(selection_window(0, 20, 5), (0, 5));
+        assert_eq!(selection_window(3, 20, 5), (1, 6));
+        assert_eq!(selection_window(19, 20, 5), (15, 20));
+        assert_eq!(selection_window(2, 3, 10), (0, 3));
+    }
+
+    #[test]
+    fn menu_width_helpers_treat_cjk_as_wide() {
+        assert_eq!(display_width("工具：rust"), 10);
+        let fitted = fit_display_width("工具：rust-toolchain-extra-long-name", 12);
+        assert!(display_width(&fitted) <= 12);
+        assert!(fitted.ends_with("..."));
     }
 }
