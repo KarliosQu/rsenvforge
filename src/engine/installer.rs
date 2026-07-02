@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode};
-use crossterm::execute;
 use crossterm::terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::{execute, queue};
 
 use super::apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror};
 use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
@@ -899,7 +899,9 @@ fn render_selection_menu(
 }
 
 fn write_menu_line(stdout: &mut io::Stdout, text: &str, width: usize) -> Result<(), ForgeError> {
-    writeln!(stdout, "{}", fit_display_width(text, width))
+    queue!(stdout, cursor::MoveToColumn(0))
+        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
+    write!(stdout, "{}\r\n", fit_display_width(text, width))
         .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))
 }
 
