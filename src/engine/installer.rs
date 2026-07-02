@@ -565,13 +565,14 @@ fn run_interactive_selection_menu(
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()
         .map_err(|error| ForgeError::Command(format!("无法启用交互选择模式：{error}")))?;
-    execute!(stdout, cursor::Hide, terminal::EnterAlternateScreen)
+    execute!(stdout, cursor::Hide)
         .map_err(|error| ForgeError::Command(format!("无法绘制安装选择菜单：{error}")))?;
 
     let result = run_selection_event_loop(choices, &mut stdout);
 
-    let _ = execute!(stdout, terminal::LeaveAlternateScreen, cursor::Show);
+    let _ = execute!(stdout, cursor::Show);
     let _ = terminal::disable_raw_mode();
+    println!();
 
     let selection = result?;
     if selection.is_empty() {
@@ -632,12 +633,14 @@ fn render_selection_menu(
     execute!(
         stdout,
         cursor::MoveTo(0, 0),
-        terminal::Clear(ClearType::All)
+        terminal::Clear(ClearType::FromCursorDown)
     )
     .map_err(|error| ForgeError::Command(format!("绘制安装选择菜单失败：{error}")))?;
+    writeln!(stdout, "请选择本次要安装的组件")
+        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
     writeln!(
         stdout,
-        "请选择本次要安装的组件（↑/↓移动，空格切换，A 全选/全不选，Enter 确认，Esc/Q 取消）"
+        "操作：Up/Down 移动，Space 切换，A 全选/全不选，Enter 确认，Esc/Q 取消"
     )
     .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
     writeln!(stdout)
