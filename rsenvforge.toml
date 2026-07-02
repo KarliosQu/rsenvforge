@@ -354,9 +354,9 @@ install_linux = "cargo install cargo-semver-checks"
 [[tools]]
 name = "nvm"
 check_windows = "nvm --version"
-check_linux = ". \"$HOME/.bashrc\" >/dev/null 2>&1 || true; export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm --version && test -n \"$RSENVFORGE_NVM_TARBALL_URL\" && test -n \"$NVM_NODEJS_ORG_MIRROR\""
+check_linux = "nvm --version"
 install_windows = "winget install -e --id CoreyButler.NVMforWindows"
-install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; test -n \"$RSENVFORGE_NVM_TARBALL_URL\" && mkdir -p \"$HOME/.nvm\" && curl -fsSL \"$RSENVFORGE_NVM_TARBALL_URL\" | tar -xz --strip-components=1 -C \"$HOME/.nvm\" && touch \"$HOME/.bashrc\" && if ! grep -q 'RSENVFORGE_NVM_TARBALL_URL' \"$HOME/.bashrc\"; then printf '\\nexport NVM_DIR=\"$HOME/.nvm\"\\n[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"\\nexport RSENVFORGE_NVM_TARBALL_URL=%s\\nexport NVM_NODEJS_ORG_MIRROR=%s\\n' \"$RSENVFORGE_NVM_TARBALL_URL\" \"$NVM_NODEJS_ORG_MIRROR\" >> \"$HOME/.bashrc\"; fi"
+install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; test -n \"$RSENVFORGE_NVM_TARBALL_URL\" || { echo '缺少 RSENVFORGE_NVM_TARBALL_URL'; exit 1; }; mkdir -p \"$HOME/.nvm\" && curl -fsSL \"$RSENVFORGE_NVM_TARBALL_URL\" | tar -xz --strip-components=1 -C \"$HOME/.nvm\" || exit $?; touch \"$HOME/.bashrc\"; if ! grep -q 'export NVM_DIR=' \"$HOME/.bashrc\"; then printf '\\nexport NVM_DIR=\"$HOME/.nvm\"\\n[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"\\n' >> \"$HOME/.bashrc\"; fi; grep -q 'RSENVFORGE_NVM_TARBALL_URL' \"$HOME/.bashrc\" || printf 'export RSENVFORGE_NVM_TARBALL_URL=%s\\n' \"$RSENVFORGE_NVM_TARBALL_URL\" >> \"$HOME/.bashrc\"; grep -q 'NVM_NODEJS_ORG_MIRROR' \"$HOME/.bashrc\" || printf 'export NVM_NODEJS_ORG_MIRROR=%s\\n' \"$NVM_NODEJS_ORG_MIRROR\" >> \"$HOME/.bashrc\"; export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm --version"
 
 [[tools]]
 name = "nodejs"

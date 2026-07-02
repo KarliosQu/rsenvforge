@@ -228,7 +228,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
 | 工具 | `gitnexus` | 安装前通过 nvm 启用 Node.js 20.17.0，再执行 `npm install -g gitnexus --ignore-scripts` |
 
-默认配置会在 `standard` 中安装 nvm。Linux 下 `nvm` 工具只安装 nvm 本体，并分别读取 `RSENVFORGE_NVM_TARBALL_URL` 和 `NVM_NODEJS_ORG_MIRROR`，不会自动下载 Node.js。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
+默认配置会在 `standard` 中安装 nvm。Linux 下 `nvm` 工具检测只执行 `nvm --version`；安装时会读取 `RSENVFORGE_NVM_TARBALL_URL` 下载 nvm 本体，并写入 `NVM_NODEJS_ORG_MIRROR`，不会自动下载 Node.js。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
 
 `gitnexus` 安装前会先通过 nvm 安装并启用 Node.js 20.17.0，因此系统 apt 提供的低版本 Node.js 不会影响 gitnexus 安装。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
 
