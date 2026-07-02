@@ -79,11 +79,10 @@ valgrind：不支持windows环境
 只有输入 `Y` 或 `y` 才会继续安装。安装过程中会以 `Step 当前/总数` 展示整体组件安装进度；APT 镜像验证/写入、安装前置命令和每个工具/skill 安装都会纳入 Step，例如：
 
 ```text
-Step 1/5：配置 APT 镜像
-Step 2/5：运行 安装前置命令
-Step 3/5：安装工具 nvm
-Step 4/5：安装工具 nodejs
-Step 5/5：安装工具 gitnexus
+Step 1/4：配置 APT 镜像
+Step 2/4：运行 安装前置命令
+Step 3/4：安装工具 nodejs
+Step 4/4：安装工具 gitnexus
 ```
 
 安装成功后会输出：
@@ -224,13 +223,12 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
 | 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；Windows: 已有 MSVC 时安装 `stable-x86_64-pc-windows-msvc`，只有 GNU 时安装 `stable-x86_64-pc-windows-gnu`，两者都没有时先补 GNU |
-| 工具 | `nvm` | Windows: winget；Linux: 从内网 `nvm-v0.40.5.tar.gz` 解压到 `~/.nvm`，并配置 `NVM_NODEJS_ORG_MIRROR` |
-| 工具 | `nodejs` | Linux: 有 nvm 时安装 Node.js 20.17，否则使用 `apt-get install -y nodejs npm`；Windows: 使用 nvm |
-| 工具 | `gitnexus` | 安装前通过 nvm 启用 Node.js 20.17.0，再执行 `npm install -g gitnexus --ignore-scripts` |
+| 工具 | `nodejs` | Linux: 从 Node.js 模板地址下载 20.17.0 压缩包并安装到 `~/.local/opt`；Windows: 使用 winget 安装 Node.js LTS |
+| 工具 | `gitnexus` | 复用 `nodejs` 准备好的 Node 20+，执行 `npm install -g gitnexus --ignore-scripts` |
 
-默认配置会在 `standard` 中安装 nvm。Linux 下 `nvm` 工具检测只执行 `nvm --version`；安装时会读取 `RSENVFORGE_NVM_TARBALL_URL` 下载 nvm 本体，并写入 `NVM_NODEJS_ORG_MIRROR`，不会自动下载 Node.js。Linux 下安装 `nodejs` 时，如果 nvm 可用，会优先用 nvm 安装 Node.js 20.17；否则使用 apt 安装 nodejs/npm。`nvm` 或 `nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境；Linux 下后续 `nvm`、`node`、`npm` 命令会自动尝试加载 `$NVM_DIR/nvm.sh`。
+Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` 模板地址，替换 `{version}`、`{arch}`、`{platform}`、`{package}` 后下载 Node.js 20.17.0 压缩包到 `~/.local/opt`，并将 `~/.local/bin` 写入 PATH。未配置模板地址时，会使用 `RSENVFORGE_NODEJS_MIRROR` 拼接默认下载路径。`nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境。
 
-`gitnexus` 安装前会先通过 nvm 安装并启用 Node.js 20.17.0，因此系统 apt 提供的低版本 Node.js 不会影响 gitnexus 安装。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
+Linux 下 `gitnexus` 安装前会运行 `node20` 和 `npm-mirror` 标签检查，因此系统 apt 提供的低版本 Node.js 不会被误认为满足要求。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
 
 Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
 
@@ -288,9 +286,9 @@ check_linux = "git ls-remote https://github.com/github/gitignore.git HEAD"
 [[tools]]
 name = "nodejs"
 check_windows = "node --version && npm --version"
-check_linux = "node --version && npm --version"
-install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
-install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
+check_linux = "node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
+install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
+install_linux = "echo 请参考根目录 rsenvforge.toml 中 nodejs 的完整离线安装命令"
 post_install_linux = "node --version && npm --version"
 
 [[skills]]
@@ -299,23 +297,17 @@ source = "https://github.com/obra/superpowers.git"
 agents = ["claude", "opencode"]
 ```
 
-只安装 nvm 并配置内网 Node.js 镜像时，可以使用默认配置中的 `nvm` 工具。nvm 安装包地址和 Node.js 镜像地址是两个独立变量：
+Linux 下直接安装 Node.js 时，推荐在环境配置中提供 Node.js 压缩包模板地址：
 
 ```bash
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-export RSENVFORGE_NVM_TARBALL_URL=http://7.222.7.221/package/nvm-v0.40.5.tar.gz
-export NVM_NODEJS_ORG_MIRROR=http://7.222.7.221/nodejs
+export RSENVFORGE_NODEJS_ARCHIVE_URL=https://mirrors.com/nodejs/v{version}/node-v{version}-linux-{arch}.tar.gz
+export RSENVFORGE_NODEJS_MIRROR=http://7.222.7.221/nodejs
+export RSENVFORGE_NODEJS_VERSION=20.17.0
 ```
 
-`RSENVFORGE_NVM_TARBALL_URL` 用于下载 nvm 本体压缩包；`NVM_NODEJS_ORG_MIRROR` 用于后续 `nvm install` 下载 Node.js。两者可以指向完全不同的内网服务。
+`RSENVFORGE_NODEJS_ARCHIVE_URL` 支持 `{version}`、`{arch}`、`{platform}`、`{package}` 四个变量。`{arch}` 会在 Linux 下自动替换为 `x64` 或 `arm64`，所以同一条模板可以覆盖 x64 和 arm64。压缩包后缀支持 `.tar.gz`、`.tgz` 和 `.tar.xz`。
 
-该工具不会执行 `nvm install`。如需下载 Node.js，请单独安装 `nodejs` 工具，或在 nvm 安装完成后手动执行：
-
-```bash
-nvm install 20.17.0
-nvm use 20.17.0
-```
+如果只配置 `RSENVFORGE_NODEJS_MIRROR`，rsenvforge 会按默认规则拼接为 `${RSENVFORGE_NODEJS_MIRROR}/v{version}/{package}.tar.gz`。
 
 `preinstall` 支持全局和分级两种写法。全局写法是 `[preinstall.linux]` / `[preinstall.windows]`，分级写法是 `[preinstall.light.linux]`、`[preinstall.standard.linux]`、`[preinstall.full.linux]`，Windows 同理。
 
@@ -401,7 +393,6 @@ install = "cargo install --git https://github.com/example/demo-from-github"
 | `rustup-mirror` | `rustup`、`RUSTUP_DIST_SERVER` 和 stable channel 文件连通性 | 支持 | 支持 |
 | `cargo-mirror` | `cargo`、Cargo registry/source 配置及 `cargo search serde` | 支持 | 支持 |
 | `cargo-install` | `cargo install --list`，确认 Cargo 安装子命令可用 | 支持 | 支持 |
-| `nvm-mirror` | `nvm`、Node 镜像设置及 `index.tab` 连通性 | 支持 | 支持 |
 | `node20` | 检查 Node.js 主版本是否 >= 20 | 支持 | 支持 |
 | `apt-mirror` | `apt-get` 与 apt 源更新；索引仅下载到临时目录，结束后删除 | 不支持 | 支持 |
 | `npm-mirror` | `npm`、registry 配置及 `npm ping` | 支持 | 支持 |
@@ -412,7 +403,7 @@ install = "cargo install --git https://github.com/example/demo-from-github"
 tags = ["cargo-install", "cargo-mirror"]
 ```
 
-以后添加 `npm install`、`npm ci` 等命令时，可按工具实际要求显式添加 `node20` 和 `npm-mirror`。如果 Node.js 主版本低于 20，`node20` 检查会失败，并询问是否跳过当前工具。`gitnexus` 不使用 `node20` 标签，而是在安装命令中通过 nvm 启用 Node.js 20.17.0。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
+以后添加 `npm install`、`npm ci` 等命令时，可按工具实际要求显式添加 `node20` 和 `npm-mirror`。如果 Node.js 主版本低于 20，`node20` 检查会失败，并询问是否跳过当前工具。Linux 下默认 `gitnexus` 会使用 `nodejs` 工具直装的 Node 20.17.0。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
 
 ## Skill 安装
 

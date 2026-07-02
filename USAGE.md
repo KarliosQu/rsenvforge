@@ -122,14 +122,13 @@ check_linux = "git ls-remote https://github.com/example/project.git HEAD"
 | `cargo-install` | 检查 `cargo install --list`。 |
 | `cargo-mirror` | 检查 Cargo 配置与 registry 查询。 |
 | `rustup-mirror` | 检查 `RUSTUP_DIST_SERVER` 与 stable channel。 |
-| `nvm-mirror` | 检查 Node 镜像与 NVM 查询。 |
 | `node20` | 检查 Node.js 主版本是否 >= 20。 |
 | `npm-mirror` | 检查 npm registry 与 `npm ping`。 |
 | `apt-mirror` | Linux 下临时验证 APT 源；Windows 不支持。 |
 
 标签需要在工具项的 `tags` 字段中显式绑定。当前默认配置已经为 `cargo install` 工具绑定 `cargo-install`，并为依赖已有 rustup 的组件工具绑定 `rustup-mirror`。
 
-默认 `nvm` 工具只安装 nvm 本体并配置镜像，不会下载 Node.js。需要内网安装时，请分别修改 `rsenvforge.toml` 中的 `RSENVFORGE_NVM_TARBALL_URL` 和 `NVM_NODEJS_ORG_MIRROR`：前者用于下载 nvm 压缩包，后者用于后续 `nvm install` 下载 Node.js。
+Linux 下默认 `nodejs` 工具优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` 模板地址，替换 `{version}`、`{arch}`、`{platform}`、`{package}` 后下载 Node.js 20.17.0 压缩包并安装到 `~/.local/opt`。如果只配置 `RSENVFORGE_NODEJS_MIRROR`，则按 `${RSENVFORGE_NODEJS_MIRROR}/v{version}/{package}.tar.gz` 拼接默认地址。压缩包支持 `.tar.gz`、`.tgz` 和 `.tar.xz`。
 
 ## 环境与预安装
 
@@ -264,4 +263,4 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，也会在执行
 
 **为什么工具安装前被标签检查阻止？**
 
-标签验证的是安装前提。例如 `cargo-install` 要求 Cargo 已经可用，`node20` 要求 Node.js 主版本至少为 20。可以修复前提条件，或在提示时选择跳过当前工具。`gitnexus` 的默认配置不使用 `node20` 标签，而是在安装命令中通过 nvm 启用 Node.js 20.17.0。标签由配置控制，可以按实际环境调整。
+标签验证的是安装前提。例如 `cargo-install` 要求 Cargo 已经可用，`node20` 要求 Node.js 主版本至少为 20。可以修复前提条件，或在提示时选择跳过当前工具。Linux 下默认 `gitnexus` 使用 `nodejs` 工具直装的 Node 20.17.0，并通过 `node20` 标签确认版本。标签由配置控制，可以按实际环境调整。

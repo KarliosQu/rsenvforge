@@ -113,6 +113,8 @@ pub(crate) fn refresh_node_process_environment() {
             candidates.push(PathBuf::from(path).join("nodejs"));
         }
     } else {
+        candidates.push(home_dir().join(".local").join("bin"));
+        candidates.extend(discover_local_node_bins());
         let nvm_dir = env::var_os("NVM_DIR")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
@@ -131,6 +133,28 @@ fn push_env_path(target: &mut Vec<PathBuf>, name: &str) {
     if let Some(value) = env::var_os(name).filter(|value| !value.is_empty()) {
         target.push(PathBuf::from(value));
     }
+}
+
+fn discover_local_node_bins() -> Vec<PathBuf> {
+    let opt_dir = home_dir().join(".local").join("opt");
+    let Ok(entries) = fs::read_dir(&opt_dir) else {
+        return Vec::new();
+    };
+    let mut bins = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|file_type| file_type.is_dir())?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("node-").then(|| entry.path().join("bin"))
+        })
+        .collect::<Vec<_>>();
+    bins.sort();
+    bins.reverse();
+    bins
 }
 
 fn discover_nvm_node_bins(nvm_dir: &Path) -> Vec<PathBuf> {
@@ -444,6 +468,16 @@ mod tests {
                 .join("bin")
         };
         fs::create_dir_all(&expected_path).unwrap();
+        let local_bin = temp.join(".local").join("bin");
+        let local_node_bin = temp
+            .join(".local")
+            .join("opt")
+            .join("node-v20.17.0-linux-x64")
+            .join("bin");
+        if !cfg!(windows) {
+            fs::create_dir_all(&local_bin).unwrap();
+            fs::create_dir_all(&local_node_bin).unwrap();
+        }
         let old_userprofile = env::var_os("USERPROFILE");
         let old_home = env::var_os("HOME");
         let old_nvm_dir = env::var_os("NVM_DIR");
@@ -463,6 +497,10 @@ mod tests {
 
         let paths = env::split_paths(&env::var_os("PATH").unwrap()).collect::<Vec<_>>();
         assert!(paths.iter().any(|path| path == &expected_path));
+        if !cfg!(windows) {
+            assert!(paths.iter().any(|path| path == &local_bin));
+            assert!(paths.iter().any(|path| path == &local_node_bin));
+        }
 
         restore_env("USERPROFILE", old_userprofile);
         restore_env("HOME", old_home);

@@ -18,9 +18,12 @@ cargo_config = [
 bashrc = [
   "export RUSTUP_DIST_SERVER=https://rsproxy.cn",
   "export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
-  # NVM 本体安装包地址和 Node.js 下载镜像地址可以不同，请按内网实际地址分别修改。
-  "export RSENVFORGE_NVM_TARBALL_URL=http://7.222.7.221/package/nvm-v0.40.5.tar.gz",
-  "export NVM_NODEJS_ORG_MIRROR=http://7.222.7.221/nodejs",
+  # Node.js 官方包下载模板。支持 {version}、{arch}、{platform}、{package} 变量。
+  "export RSENVFORGE_NODEJS_ARCHIVE_URL=http://7.222.7.221/nodejs/v{version}/node-v{version}-linux-{arch}.tar.gz",
+  # Node.js 镜像根目录。未配置 RSENVFORGE_NODEJS_ARCHIVE_URL 时，会拼接为
+  # ${RSENVFORGE_NODEJS_MIRROR}/v{version}/{package}.tar.gz。
+  "export RSENVFORGE_NODEJS_MIRROR=http://7.222.7.221/nodejs",
+  "export RSENVFORGE_NODEJS_VERSION=20.17.0",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
@@ -77,7 +80,6 @@ items = []
 tools = [
   "rust-build-base",
   "rust-toolchain",
-  "nvm",
   "nodejs",
   "gitnexus",
 ]
@@ -187,11 +189,6 @@ check_linux = "cargo --version || exit $?; config=\"${CARGO_HOME:-$HOME/.cargo}/
 [tag_checks.cargo-install]
 check_windows = "cargo install --list"
 check_linux = "cargo install --list"
-
-# 用于校验 nvm 下载镜像；只有在具体工具 tags 中显式引用 nvm-mirror 时才会执行。
-[tag_checks.nvm-mirror]
-check_windows = "powershell -NoProfile -Command \"nvm version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $root = if ($env:NVM_HOME) { $env:NVM_HOME } else { Join-Path $env:APPDATA 'nvm' }; $settings = Join-Path $root 'settings.txt'; if (!(Test-Path $settings)) { exit 1 }; $line = Select-String -Path $settings -Pattern '^node_mirror:\\s*(.+)$' | Select-Object -First 1; if ($null -eq $line) { exit 1 }; $url = $line.Matches[0].Groups[1].Value.Trim().TrimEnd('/'); curl.exe -fsS --connect-timeout 10 ($url + '/index.tab') > $null; exit $LASTEXITCODE\""
-check_linux = "nvm --version && test -n \"$NVM_NODEJS_ORG_MIRROR\" && curl -fsS --connect-timeout 10 \"${NVM_NODEJS_ORG_MIRROR%/}/index.tab\" >/dev/null && nvm ls-remote 20.17.0 | grep -q 'v20.17.0'"
 
 [tag_checks.apt-mirror]
 check_windows = "0"
@@ -352,26 +349,19 @@ install_windows = "cargo install cargo-semver-checks"
 install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
-name = "nvm"
-check_windows = "nvm --version"
-check_linux = "nvm --version"
-install_windows = "winget install -e --id CoreyButler.NVMforWindows"
-install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; test -n \"$RSENVFORGE_NVM_TARBALL_URL\" || { echo '缺少 RSENVFORGE_NVM_TARBALL_URL'; exit 1; }; mkdir -p \"$HOME/.nvm\" && curl -fsSL \"$RSENVFORGE_NVM_TARBALL_URL\" | tar -xz --strip-components=1 -C \"$HOME/.nvm\" || exit $?; touch \"$HOME/.bashrc\"; grep -q 'export NVM_DIR=' \"$HOME/.bashrc\" || printf '\\nexport NVM_DIR=\"$HOME/.nvm\"\\n' >> \"$HOME/.bashrc\"; grep -q 'nvm.sh' \"$HOME/.bashrc\" || printf '[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"\\n' >> \"$HOME/.bashrc\"; grep -q 'RSENVFORGE_NVM_TARBALL_URL' \"$HOME/.bashrc\" || printf 'export RSENVFORGE_NVM_TARBALL_URL=%s\\n' \"$RSENVFORGE_NVM_TARBALL_URL\" >> \"$HOME/.bashrc\"; grep -q 'NVM_NODEJS_ORG_MIRROR' \"$HOME/.bashrc\" || printf 'export NVM_NODEJS_ORG_MIRROR=%s\\n' \"$NVM_NODEJS_ORG_MIRROR\" >> \"$HOME/.bashrc\"; . \"$HOME/.bashrc\"; export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm --version && bash -ic 'nvm --version'"
-
-[[tools]]
 name = "nodejs"
-check_windows = "node --version && npm --version"
-check_linux = "node --version && npm --version"
-install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0"
-install_linux = "if command -v nvm >/dev/null 2>&1; then nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0; else apt-get update && apt-get install -y nodejs npm; fi"
+check_windows = "node --version && npm --version && node -e \"const major = Number(process.versions.node.split('.')[0]); process.exit(major >= 20 ? 0 : 1)\""
+check_linux = "node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
+install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
+install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; version=\"${RSENVFORGE_NODEJS_VERSION:-20.17.0}\"; case \"$(uname -m)\" in x86_64|amd64) node_arch=x64 ;; aarch64|arm64) node_arch=arm64 ;; *) echo \"不支持的 Node.js 架构：$(uname -m)\"; exit 1 ;; esac; platform=linux; package=\"node-v${version}-${platform}-${node_arch}\"; archive_url=\"${RSENVFORGE_NODEJS_ARCHIVE_URL:-}\"; if [ -z \"$archive_url\" ]; then mirror=\"${RSENVFORGE_NODEJS_MIRROR:-}\"; test -n \"$mirror\" || { echo '缺少 RSENVFORGE_NODEJS_ARCHIVE_URL 或 RSENVFORGE_NODEJS_MIRROR'; exit 1; }; archive_url=\"${mirror%/}/v{version}/{package}.tar.gz\"; fi; archive_url=\"${archive_url//\\{version\\}/$version}\"; archive_url=\"${archive_url//\\{arch\\}/$node_arch}\"; archive_url=\"${archive_url//\\{platform\\}/$platform}\"; archive_url=\"${archive_url//\\{package\\}/$package}\"; case \"$archive_url\" in *.tar.xz) tar_args=-xJ ;; *.tar.gz|*.tgz) tar_args=-xz ;; *) echo \"不支持的 Node.js 压缩包格式：$archive_url\"; exit 1 ;; esac; install_dir=\"$HOME/.local/opt/$package\"; mkdir -p \"$install_dir\" \"$HOME/.local/bin\" && curl -fsSL \"$archive_url\" | tar \"$tar_args\" --strip-components=1 -C \"$install_dir\" || exit $?; ln -sf \"$install_dir/bin/node\" \"$HOME/.local/bin/node\"; ln -sf \"$install_dir/bin/npm\" \"$HOME/.local/bin/npm\"; ln -sf \"$install_dir/bin/npx\" \"$HOME/.local/bin/npx\"; touch \"$HOME/.bashrc\"; grep -q '\\$HOME/.local/bin' \"$HOME/.bashrc\" || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"\\n' >> \"$HOME/.bashrc\"; export PATH=\"$HOME/.local/bin:$PATH\"; node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
 
 [[tools]]
 name = "gitnexus"
-tags = ["npm-mirror"]
+tags = ["node20", "npm-mirror"]
 check_windows = "gitnexus --version"
 check_linux = "gitnexus --version"
-install_windows = "set \"PATH=%NVM_HOME%;%LocalAppData%\\nvm;%APPDATA%\\nvm;%ProgramFiles%\\nodejs;%PATH%\" && nvm install 20.17.0 && nvm use 20.17.0 && npm install -g gitnexus --ignore-scripts"
-install_linux = "nvm install 20.17.0 && nvm alias default 20.17.0 && nvm use 20.17.0 && npm install -g gitnexus --ignore-scripts"
+install_windows = "npm install -g gitnexus --ignore-scripts"
+install_linux = "npm install -g gitnexus --ignore-scripts"
 
 [[tools]]
 name = "python"

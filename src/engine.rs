@@ -264,19 +264,12 @@ mod tests {
         }
         assert!(!light.contains(&"cpp2rust-demo".to_string()));
         assert!(!light.contains(&"c2rust-demo".to_string()));
-        for tool in [
-            "rust-build-base",
-            "rust-toolchain",
-            "nvm",
-            "nodejs",
-            "gitnexus",
-        ] {
+        for tool in ["rust-build-base", "rust-toolchain", "nodejs", "gitnexus"] {
             assert!(standard.contains(&tool.to_string()));
         }
-        let nvm_index = standard.iter().position(|tool| tool == "nvm").unwrap();
+        assert!(!standard.contains(&"nvm".to_string()));
         let nodejs_index = standard.iter().position(|tool| tool == "nodejs").unwrap();
         let gitnexus_index = standard.iter().position(|tool| tool == "gitnexus").unwrap();
-        assert!(nvm_index < nodejs_index);
         assert!(nodejs_index < gitnexus_index);
 
         let tool_names = config
@@ -284,7 +277,6 @@ mod tests {
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>();
-        let nvm_def_index = tool_names.iter().position(|tool| *tool == "nvm").unwrap();
         let nodejs_def_index = tool_names
             .iter()
             .position(|tool| *tool == "nodejs")
@@ -293,8 +285,8 @@ mod tests {
             .iter()
             .position(|tool| *tool == "gitnexus")
             .unwrap();
-        assert!(nvm_def_index < nodejs_def_index);
         assert!(nodejs_def_index < gitnexus_def_index);
+        assert!(!tool_names.contains(&"nvm"));
     }
 
     #[test]
@@ -314,7 +306,6 @@ mod tests {
             "rustup-mirror",
             "cargo-mirror",
             "cargo-install",
-            "nvm-mirror",
             "node20",
             "apt-mirror",
             "npm-mirror",
@@ -365,38 +356,67 @@ mod tests {
             .find(|candidate| candidate.name == "nodejs")
             .unwrap();
         assert!(nodejs.tags.is_empty());
-        let nvm = config
-            .tools
-            .iter()
-            .find(|candidate| candidate.name == "nvm")
-            .unwrap();
-        assert!(nvm.tags.is_empty());
+        assert!(nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("RSENVFORGE_NODEJS_ARCHIVE_URL"));
+        assert!(nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains(".local/bin"));
+        assert!(nodejs.install_linux.as_deref().unwrap().contains(".tar.gz"));
+        assert!(nodejs.install_linux.as_deref().unwrap().contains(".tar.xz"));
+        assert!(nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("node_arch"));
+        assert!(nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("archive_url//\\{arch\\}/$node_arch"));
+        assert!(nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("tar \"$tar_args\""));
+        assert!(!nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("NVM_NODEJS_ORG_MIRROR"));
         let gitnexus = config
             .tools
             .iter()
             .find(|candidate| candidate.name == "gitnexus")
             .unwrap();
-        assert_eq!(gitnexus.tags, vec!["npm-mirror".to_string()]);
+        assert_eq!(
+            gitnexus.tags,
+            vec!["node20".to_string(), "npm-mirror".to_string()]
+        );
         assert!(gitnexus
             .install_linux
             .as_deref()
             .unwrap()
             .contains("--ignore-scripts"));
-        assert!(gitnexus
+        assert!(!gitnexus
             .install_linux
             .as_deref()
             .unwrap()
-            .contains("nvm install 20.17.0"));
+            .contains("nvm install"));
         assert!(gitnexus
             .install_windows
             .as_deref()
             .unwrap()
             .contains("--ignore-scripts"));
-        assert!(gitnexus
+        assert!(!gitnexus
             .install_windows
             .as_deref()
             .unwrap()
-            .contains("nvm install 20.17.0"));
+            .contains("nvm install"));
     }
 
     #[test]
