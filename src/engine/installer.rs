@@ -15,7 +15,7 @@ use super::constants::CONFIG_FILE;
 use super::discovery::{discover_crates, discover_skills};
 use super::envfile::{
     apply_after_rust_install_environment, apply_install_start_environment,
-    refresh_node_process_environment,
+    refresh_install_finish_environment, refresh_node_process_environment,
 };
 use super::error::ForgeError;
 use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_file};
@@ -57,6 +57,7 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
             &mut progress,
         )?;
         let entries = install_legacy_items(&config, options)?;
+        refresh_install_finish_environment(&config)?;
         let final_preview = preview_install(&config, options.profile)?;
         print_install_complete(&final_preview);
         return Ok(InstallReport {
@@ -120,6 +121,7 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         apply_after_rust_install_environment(&config)?;
     }
     let entries = install_legacy_items(&config, options)?;
+    refresh_install_finish_environment(&config)?;
     let final_preview = preview_install(&config, options.profile)?;
     print_install_complete(&final_preview);
     Ok(InstallReport {

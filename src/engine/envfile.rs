@@ -37,6 +37,32 @@ pub(crate) fn apply_after_rust_install_environment(
     Ok(())
 }
 
+pub(crate) fn refresh_install_finish_environment(config: &InstallConfig) -> Result<(), ForgeError> {
+    println!("正在刷新安装后的终端环境配置...");
+    write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
+    append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
+    if cfg!(target_os = "linux") {
+        apply_export_lines_to_process(&config.environment.bashrc);
+        append_lines_if_missing(
+            "bashrc",
+            &home_dir().join(".bashrc"),
+            &config.environment.bashrc,
+        )?;
+    }
+    refresh_rust_process_environment();
+    refresh_node_process_environment();
+    if cfg!(target_os = "linux") {
+        println!("已刷新当前安装进程环境，并已确认 ~/.bashrc 包含 rsenvforge 环境配置。");
+        println!(
+            "如果当前终端仍找不到 cargo/rustup/node/npm，请执行 source ~/.bashrc 或重新打开终端。"
+        );
+    } else {
+        println!("已刷新当前安装进程环境。");
+        println!("如果当前终端仍找不到新安装命令，请重新打开 PowerShell/CMD 后再试。");
+    }
+    Ok(())
+}
+
 fn apply_export_lines_to_process(lines: &[String]) {
     for line in lines {
         if let Some((name, value)) = parse_export_line(line) {

@@ -507,6 +507,7 @@ fn install_defaults_to_all_selected_and_prints_steps_in_non_tty() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Step 1/1：安装工具 step-demo"));
     assert!(stdout.contains("开始安装工具：step-demo"));
+    assert!(stdout.contains("正在刷新安装后的终端环境配置"));
 
     fs::remove_dir_all(temp).unwrap();
 }
