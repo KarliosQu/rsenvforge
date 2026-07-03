@@ -54,6 +54,14 @@ commands = []
 tools = [
   "gnu",
   "msvc",
+  "rust-build-base",
+  "rust-toolchain",
+  "nodejs",
+]
+items = []
+
+[profiles.standard]
+tools = [
   "cargo-llvm-cov",
   "bindgen-cli",
   "cargo-audit",
@@ -73,14 +81,6 @@ tools = [
   "python",
   "ninja",
   "valgrind",
-]
-items = []
-
-[profiles.standard]
-tools = [
-  "rust-build-base",
-  "rust-toolchain",
-  "nodejs",
   "gitnexus",
 ]
 items = []

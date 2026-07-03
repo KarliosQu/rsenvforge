@@ -236,7 +236,10 @@ mod tests {
             assert!(light.contains(&tool.to_string()));
             assert!(config.tools.iter().any(|candidate| candidate.name == tool));
         }
-        assert!(light.contains(&"cargo-llvm-cov".to_string()));
+        for tool in ["rust-build-base", "rust-toolchain", "nodejs"] {
+            assert!(light.contains(&tool.to_string()));
+            assert!(config.tools.iter().any(|candidate| candidate.name == tool));
+        }
         for tool in [
             "cargo-llvm-cov",
             "bindgen-cli",
@@ -255,22 +258,21 @@ mod tests {
             "rust-checker-cli",
             "rustbot-cli",
         ] {
-            assert!(light.contains(&tool.to_string()));
+            assert!(standard.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
         }
         for tool in ["python", "ninja", "valgrind"] {
-            assert!(light.contains(&tool.to_string()));
+            assert!(standard.contains(&tool.to_string()));
             assert!(config.tools.iter().any(|candidate| candidate.name == tool));
         }
         assert!(!light.contains(&"cpp2rust-demo".to_string()));
         assert!(!light.contains(&"c2rust-demo".to_string()));
-        for tool in ["rust-build-base", "rust-toolchain", "nodejs", "gitnexus"] {
-            assert!(standard.contains(&tool.to_string()));
-        }
+        assert!(standard.contains(&"gitnexus".to_string()));
         assert!(!standard.contains(&"nvm".to_string()));
-        let nodejs_index = standard.iter().position(|tool| tool == "nodejs").unwrap();
+        let nodejs_index = light.iter().position(|tool| tool == "nodejs").unwrap();
         let gitnexus_index = standard.iter().position(|tool| tool == "gitnexus").unwrap();
-        assert!(nodejs_index < gitnexus_index);
+        assert!(nodejs_index < light.len());
+        assert!(gitnexus_index < standard.len());
 
         let tool_names = config
             .tools
