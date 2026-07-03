@@ -211,7 +211,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `cargo-msrv` | `cargo install cargo-msrv` |
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
 | 工具 | `rust-checker-cli` | `cargo install rust-checker-cli` |
-| 工具 | `rustbot-cli` | `cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force` |
+| 工具 | `rust-bot` | `cargo install rust-bot` |
 | 工具 | `python` | Windows: winget；Linux: `apt-get install -y python3 python3-pip` |
 | 工具 | `ninja` | Windows: winget；Linux: `apt-get install -y ninja-build` |
 | 工具 | `valgrind` | Linux: `apt-get install -y valgrind`；Windows: 不支持 |

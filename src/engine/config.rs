@@ -585,10 +585,7 @@ pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
             "rust-checker-cli --version",
             "cargo install rust-checker-cli",
         ),
-        "rustbot-cli" => (
-            "rustbot --version",
-            "cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force",
-        ),
+        "rust-bot" => ("rust-bot --version", "cargo install rust-bot"),
         "llvm-tools-preview" => (
             "rustup component list --installed",
             "rustup component add llvm-tools-preview",

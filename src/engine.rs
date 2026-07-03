@@ -256,7 +256,7 @@ mod tests {
             "cargo-msrv",
             "cargo-semver-checks",
             "rust-checker-cli",
-            "rustbot-cli",
+            "rust-bot",
         ] {
             assert!(standard.contains(&tool.to_string()));
             assert!(builtin_cargo_tool(tool).is_some());
@@ -329,7 +329,7 @@ mod tests {
             "cargo-msrv",
             "cargo-semver-checks",
             "rust-checker-cli",
-            "rustbot-cli",
+            "rust-bot",
         ] {
             let tool = config
                 .tools

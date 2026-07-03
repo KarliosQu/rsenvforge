@@ -77,7 +77,7 @@ tools = [
   "cargo-msrv",
   "cargo-semver-checks",
   "rust-checker-cli",
-  "rustbot-cli",
+  "rust-bot",
   "python",
   "ninja",
   "valgrind",
@@ -391,9 +391,9 @@ install_windows = "cargo install rust-checker-cli"
 install_linux = "cargo install rust-checker-cli"
 
 [[tools]]
-name = "rustbot-cli"
+name = "rust-bot"
 tags = ["cargo-install"]
-check_windows = "rustbot --version"
-check_linux = "rustbot --version"
-install_windows = "cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force"
-install_linux = "cargo install --git https://gitcode.com/xuanwu/rustbot-cli --tag v1.1.0 rustbot --force"
+check_windows = "rust-bot --version"
+check_linux = "rust-bot --version"
+install_windows = "cargo install rust-bot"
+install_linux = "cargo install rust-bot"
