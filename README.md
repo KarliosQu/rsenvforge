@@ -225,7 +225,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `nodejs` | Linux: 从 Node.js 模板地址下载 20.17.0 压缩包并安装到 `~/.local/opt`；Windows: 使用 winget 安装 Node.js LTS |
 | 工具 | `gitnexus` | 复用 `nodejs` 准备好的 Node 20+，执行 `npm install -g gitnexus --ignore-scripts` |
 
-Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` 模板地址，替换 `{version}`、`{arch}`、`{platform}`、`{package}` 后下载 Node.js 20.17.0 压缩包到 `~/.local/opt`，并将 `~/.local/bin` 写入 PATH。未配置模板地址时，会使用 `RSENVFORGE_NODEJS_MIRROR` 拼接默认下载路径。`nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境。
+Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` 模板地址，替换 `{version}`、`{arch}`、`{platform}`、`{package}` 后下载 Node.js 20.17.0 压缩包到 `~/.local/opt`，并将 `~/.local/bin` 写入 PATH。未配置模板地址时，会使用 `RSENVFORGE_NODEJS_MIRROR` 拼接默认下载路径。`nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境，并把 `$(npm prefix -g)/bin` 写入当前用户的 `~/.bashrc`，避免 `npm install -g` 已安装但新终端找不到命令。
 
 Linux 下 `gitnexus` 安装前会运行 `node20` 和 `npm-mirror` 标签检查，因此系统 apt 提供的低版本 Node.js 不会被误认为满足要求。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
 

@@ -390,6 +390,11 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains(".local/bin"));
+        assert!(nodejs
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("node_global_bin=\"$(npm prefix -g)/bin\""));
         assert!(nodejs.install_linux.as_deref().unwrap().contains(".tar.gz"));
         assert!(nodejs.install_linux.as_deref().unwrap().contains(".tar.xz"));
         assert!(nodejs
