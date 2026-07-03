@@ -355,7 +355,29 @@ mod tests {
             .iter()
             .find(|candidate| candidate.name == "nodejs")
             .unwrap();
+        assert!(config
+            .environment
+            .bashrc
+            .iter()
+            .any(|line| line.contains("$HOME/.local/bin:$PATH")));
+        let node20_check = config.tag_checks.get("node20").unwrap();
+        assert!(node20_check
+            .check_linux
+            .as_deref()
+            .unwrap()
+            .contains("node --version"));
+        assert!(!node20_check
+            .check_linux
+            .as_deref()
+            .unwrap()
+            .contains("node -e"));
         assert!(nodejs.tags.is_empty());
+        assert!(nodejs
+            .check_linux
+            .as_deref()
+            .unwrap()
+            .contains("node --version"));
+        assert!(!nodejs.check_linux.as_deref().unwrap().contains("node -e"));
         assert!(nodejs
             .install_linux
             .as_deref()

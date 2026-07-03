@@ -24,6 +24,7 @@ bashrc = [
   # ${RSENVFORGE_NODEJS_MIRROR}/v{version}/{package}.tar.gz。
   "export RSENVFORGE_NODEJS_MIRROR=http://7.222.7.221/nodejs",
   "export RSENVFORGE_NODEJS_VERSION=20.17.0",
+  "export PATH=\"$HOME/.local/bin:$PATH\"",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
@@ -73,7 +74,6 @@ tools = [
   "ninja",
   "valgrind",
 ]
-skills = []
 items = []
 
 [profiles.standard]
@@ -83,12 +83,10 @@ tools = [
   "nodejs",
   "gitnexus",
 ]
-skills = []
 items = []
 
 [profiles.full]
 tools = []
-skills = []
 items = []
 
 # 内部 APT 镜像配置独立于 [environment]，因为它会生成系统 APT source 文件。
@@ -172,8 +170,8 @@ check_windows = "npm --version"
 check_linux = "npm --version"
 
 [tag_checks.node20]
-check_windows = "powershell -NoProfile -Command \"node -e \\\"const major = Number(process.versions.node.split('.')[0]); console.log(process.version); process.exit(major >= 20 ? 0 : 1)\\\"\""
-check_linux = "node -e 'const major = Number(process.versions.node.split(\".\")[0]); console.log(process.version); process.exit(major >= 20 ? 0 : 1)'"
+check_windows = "powershell -NoProfile -Command \"$version = node --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Write-Output $version; $major = [int]($version.TrimStart('v').Split('.')[0]); if ($major -ge 20) { exit 0 } else { exit 1 }\""
+check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; version=$(node --version) || exit $?; echo \"$version\"; major=${version#v}; major=${major%%.*}; test \"$major\" -ge 20"
 
 # 镜像标签不会自动绑定到工具。需要时请在对应 [[tools]] 中显式填写，
 # 例如：tags = ["cargo-mirror"]。
@@ -196,7 +194,7 @@ check_linux = "command -v apt-get >/dev/null || exit 1; tmp=$(mktemp -d) || exit
 
 [tag_checks.npm-mirror]
 check_windows = "powershell -NoProfile -Command \"npm --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $registry = (npm config get registry).Trim(); if ([string]::IsNullOrWhiteSpace($registry) -or $registry -eq 'null') { exit 1 }; npm ping --registry $registry; exit $LASTEXITCODE\""
-check_linux = "npm --version || exit $?; registry=$(npm config get registry); test -n \"$registry\" && test \"$registry\" != \"null\" && npm ping --registry \"$registry\""
+check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; npm --version || exit $?; registry=$(npm config get registry); test -n \"$registry\" && test \"$registry\" != \"null\" && npm ping --registry \"$registry\""
 
 # 标签配置示例：删除每行开头的 # 后，再按实际工具名称和安装命令填写。
 # [[tools]]
@@ -350,8 +348,8 @@ install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
 name = "nodejs"
-check_windows = "node --version && npm --version && node -e \"const major = Number(process.versions.node.split('.')[0]); process.exit(major >= 20 ? 0 : 1)\""
-check_linux = "node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
+check_windows = "powershell -NoProfile -Command \"$version = node --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Write-Output $version; $major = [int]($version.TrimStart('v').Split('.')[0]); if ($major -ge 20) { exit 0 } else { exit 1 }\""
+check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; version=$(node --version) || exit $?; npm --version || exit $?; echo \"$version\"; major=${version#v}; major=${major%%.*}; test \"$major\" -ge 20"
 install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
 install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; version=\"${RSENVFORGE_NODEJS_VERSION:-20.17.0}\"; case \"$(uname -m)\" in x86_64|amd64) node_arch=x64 ;; aarch64|arm64) node_arch=arm64 ;; *) echo \"不支持的 Node.js 架构：$(uname -m)\"; exit 1 ;; esac; platform=linux; package=\"node-v${version}-${platform}-${node_arch}\"; archive_url=\"${RSENVFORGE_NODEJS_ARCHIVE_URL:-}\"; if [ -z \"$archive_url\" ]; then mirror=\"${RSENVFORGE_NODEJS_MIRROR:-}\"; test -n \"$mirror\" || { echo '缺少 RSENVFORGE_NODEJS_ARCHIVE_URL 或 RSENVFORGE_NODEJS_MIRROR'; exit 1; }; archive_url=\"${mirror%/}/v{version}/{package}.tar.gz\"; fi; archive_url=\"${archive_url//\\{version\\}/$version}\"; archive_url=\"${archive_url//\\{arch\\}/$node_arch}\"; archive_url=\"${archive_url//\\{platform\\}/$platform}\"; archive_url=\"${archive_url//\\{package\\}/$package}\"; case \"$archive_url\" in *.tar.xz) tar_args=-xJ ;; *.tar.gz|*.tgz) tar_args=-xz ;; *) echo \"不支持的 Node.js 压缩包格式：$archive_url\"; exit 1 ;; esac; install_dir=\"$HOME/.local/opt/$package\"; mkdir -p \"$install_dir\" \"$HOME/.local/bin\" && curl -fsSL \"$archive_url\" | tar \"$tar_args\" --strip-components=1 -C \"$install_dir\" || exit $?; ln -sf \"$install_dir/bin/node\" \"$HOME/.local/bin/node\"; ln -sf \"$install_dir/bin/npm\" \"$HOME/.local/bin/npm\"; ln -sf \"$install_dir/bin/npx\" \"$HOME/.local/bin/npx\"; touch \"$HOME/.bashrc\"; grep -q '\\$HOME/.local/bin' \"$HOME/.bashrc\" || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"\\n' >> \"$HOME/.bashrc\"; export PATH=\"$HOME/.local/bin:$PATH\"; node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
 

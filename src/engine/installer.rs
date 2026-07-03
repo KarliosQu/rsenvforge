@@ -10,8 +10,8 @@ use crossterm::terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateS
 use crossterm::{execute, queue};
 
 use super::apt_mirror::{apply_apt_mirror, apt_mirror_preview, check_apt_mirror};
-use super::config::{load_config, resolve_config_sources, skills_for_names, tools_for_names};
-use super::constants::{CONFIG_FILE, SKILL_FILE};
+use super::config::{load_config, resolve_config_sources, tools_for_names};
+use super::constants::CONFIG_FILE;
 use super::discovery::{discover_crates, discover_skills};
 use super::envfile::{
     apply_after_rust_install_environment, apply_install_start_environment,
@@ -22,7 +22,7 @@ use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_
 use super::input::read_user_line;
 use super::models::{
     Agent, InstallConfig, InstallItem, InstallKind, InstallOptions, InstallPreview, InstallReport,
-    Profile, ProfileDef, RegistryEntry, SkillDef, SkillStatus, ToolDef, ToolStatus,
+    Profile, ProfileDef, RegistryEntry, ToolDef, ToolStatus,
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
 use super::process::{
@@ -45,9 +45,8 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
     print_preview(&preview);
 
     let missing_tools = preview.missing_tools();
-    let missing_skills = preview.missing_skills();
-    if missing_tools.is_empty() && missing_skills.is_empty() {
-        println!("所有工具和 skill 均已安装。");
+    if missing_tools.is_empty() {
+        println!("所有工具均已安装。");
         let selection = InstallSelection::all(&preview);
         let mut progress = InstallProgress::new(0);
         process_profile_tools(
@@ -70,11 +69,6 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
         "缺少的工具：{}",
         join_names(missing_tools.iter().map(|status| status.name.as_str()))
     );
-    println!(
-        "缺少的 skill：{}",
-        join_names(missing_skills.iter().map(|status| status.name.as_str()))
-    );
-
     let not_installable: Vec<&ToolStatus> = missing_tools
         .iter()
         .copied()
@@ -125,14 +119,6 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
     if rust_missing {
         apply_after_rust_install_environment(&config)?;
     }
-    install_missing_skills(
-        &config,
-        options.profile,
-        &preview,
-        &selection,
-        options.force,
-        &mut progress,
-    )?;
     let entries = install_legacy_items(&config, options)?;
     let final_preview = preview_install(&config, options.profile)?;
     print_install_complete(&final_preview);
@@ -148,22 +134,15 @@ pub fn preview_install(
 ) -> Result<InstallPreview, ForgeError> {
     let profile_def = merged_profile(config, profile)?;
     let tools = tools_for_names(config, &profile_def.tools)?;
-    let skills = skills_for_names(config, &profile_def.skills)?;
     let mut tool_status = Vec::new();
-    let mut skill_status = Vec::new();
 
     for tool in tools {
         tool_status.push(check_tool(&tool));
     }
-    for skill in skills {
-        for agent in &skill.agents {
-            skill_status.push(check_skill(&skill, *agent));
-        }
-    }
 
     Ok(InstallPreview {
         tools: tool_status,
-        skills: skill_status,
+        skills: Vec::new(),
     })
 }
 
@@ -182,21 +161,6 @@ pub fn print_preview(preview: &InstallPreview) {
             println!("  尚未安装：{}", status.name);
         }
     }
-
-    println!("Skill 检测结果：");
-    for status in &preview.skills {
-        if !status.installable {
-            println!(
-                "  跳过：{} -> {}（未找到默认 skill 文件夹）",
-                status.name,
-                status.agent.as_str()
-            );
-        } else if status.installed {
-            println!("  已安装：{} -> {}", status.name, status.agent.as_str());
-        } else {
-            println!("  尚未安装：{} -> {}", status.name, status.agent.as_str());
-        }
-    }
 }
 
 fn print_install_complete(preview: &InstallPreview) {
@@ -209,15 +173,6 @@ fn print_install_complete(preview: &InstallPreview) {
                 "已安装【{}】+【{}】",
                 status.name,
                 status.version.as_deref().unwrap_or("无法读取版本")
-            );
-        }
-    }
-    for status in &preview.skills {
-        if status.installed {
-            println!(
-                "已安装【{} -> {}】+【无版本信息】",
-                status.name,
-                status.agent.as_str()
             );
         }
     }
@@ -265,17 +220,7 @@ pub fn update_installed(force: bool, norustup: bool) -> Result<Vec<RegistryEntry
             continue;
         }
         match entry.kind {
-            InstallKind::Skill => {
-                let agents = agents_from_targets(&entry.targets);
-                let item = InstallItem {
-                    name: entry.name,
-                    kind: InstallKind::Skill,
-                    source: entry.source,
-                    agents,
-                    bins: Vec::new(),
-                };
-                updated.extend(install_skill_item(&item, &entry.profile, force, true)?);
-            }
+            InstallKind::Skill => continue,
             InstallKind::Crate => {
                 let bins = entry
                     .targets
@@ -349,8 +294,6 @@ pub fn doctor_report() -> Vec<String> {
     lines.push(format!("git：{}", command_status_text("git")));
     lines.push(format!("cargo：{}", command_status_text("cargo")));
     lines.push(format!("rustup：{}", command_status_text("rustup")));
-    lines.push(format!("claude：{}", command_status_text("claude")));
-    lines.push(format!("opencode：{}", command_status_text("opencode")));
     lines.push("请将托管 bin 目录加入 PATH，以便直接运行已安装 Rust 工具。".to_string());
     lines
 }
@@ -631,21 +574,6 @@ fn current_platform_name() -> &'static str {
     }
 }
 
-fn check_skill(skill: &SkillDef, agent: Agent) -> SkillStatus {
-    let agent_dir = default_agent_skill_dir(agent);
-    let installed = agent_dir
-        .as_ref()
-        .map(|dir| dir.join(&skill.name).join(SKILL_FILE).is_file())
-        .unwrap_or(false);
-    SkillStatus {
-        name: skill.name.clone(),
-        agent,
-        installable: agent_dir.is_some() && !skill.source.is_empty(),
-        agent_dir,
-        installed,
-    }
-}
-
 fn confirm_install() -> Result<bool, ForgeError> {
     println!("以上为目前工具安装情况，请问是否安装缺失工具？(Y/N)");
     let answer = read_user_line()?;
@@ -655,7 +583,6 @@ fn confirm_install() -> Result<bool, ForgeError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct InstallSelection {
     tools: BTreeSet<String>,
-    skills: BTreeSet<String>,
 }
 
 impl InstallSelection {
@@ -667,35 +594,25 @@ impl InstallSelection {
                 .filter(|status| status.installable)
                 .map(|status| status.name.clone())
                 .collect(),
-            skills: preview
-                .missing_skills()
-                .into_iter()
-                .map(|status| skill_selection_key(&status.name, status.agent))
-                .collect(),
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.tools.is_empty() && self.skills.is_empty()
+        self.tools.is_empty()
     }
 
     fn includes_tool(&self, name: &str) -> bool {
         self.tools.contains(name)
     }
 
-    fn includes_skill(&self, name: &str, agent: Agent) -> bool {
-        self.skills.contains(&skill_selection_key(name, agent))
-    }
-
     fn step_count(&self) -> usize {
-        self.tools.len() + self.skills.len()
+        self.tools.len()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SelectionKind {
     Tool(String),
-    Skill(String, Agent),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -718,7 +635,6 @@ fn select_install_components(preview: &InstallPreview) -> Result<InstallSelectio
         }
         return Ok(InstallSelection {
             tools: BTreeSet::new(),
-            skills: BTreeSet::new(),
         });
     }
 
@@ -733,15 +649,6 @@ fn selectable_install_choices(preview: &InstallPreview) -> Vec<SelectionChoice> 
             kind: SelectionKind::Tool(status.name.clone()),
             label: tool_selection_label(status),
             selected: selectable && default_tool_selected(status, preview),
-            selectable,
-        }
-    }));
-    choices.extend(preview.skills.iter().map(|status| {
-        let selectable = !status.installed && status.installable;
-        SelectionChoice {
-            kind: SelectionKind::Skill(status.name.clone(), status.agent),
-            label: skill_selection_label(status),
-            selected: selectable,
             selectable,
         }
     }));
@@ -768,28 +675,6 @@ fn tool_selection_label(status: &ToolStatus) -> String {
     } else {
         format!("工具：{}（尚未安装，缺少安装命令）", status.name)
     }
-}
-
-fn skill_selection_label(status: &SkillStatus) -> String {
-    if status.installed {
-        return format!(
-            "Skill：{} -> {}（已安装）",
-            status.name,
-            status.agent.as_str()
-        );
-    }
-    if !status.installable {
-        return format!(
-            "Skill：{} -> {}（未找到默认 skill 文件夹）",
-            status.name,
-            status.agent.as_str()
-        );
-    }
-    format!(
-        "Skill：{} -> {}（尚未安装）",
-        status.name,
-        status.agent.as_str()
-    )
 }
 
 fn default_tool_selected(status: &ToolStatus, preview: &InstallPreview) -> bool {
@@ -1028,7 +913,6 @@ fn display_char_width(ch: char) -> usize {
 fn selection_from_choices(choices: &[SelectionChoice]) -> InstallSelection {
     let mut selection = InstallSelection {
         tools: BTreeSet::new(),
-        skills: BTreeSet::new(),
     };
     for choice in choices
         .iter()
@@ -1038,16 +922,9 @@ fn selection_from_choices(choices: &[SelectionChoice]) -> InstallSelection {
             SelectionKind::Tool(name) => {
                 selection.tools.insert(name.clone());
             }
-            SelectionKind::Skill(name, agent) => {
-                selection.skills.insert(skill_selection_key(name, *agent));
-            }
         }
     }
     selection
-}
-
-fn skill_selection_key(name: &str, agent: Agent) -> String {
-    format!("{name}\t{}", agent.as_str())
 }
 
 fn confirm_apt_mirror_for_install(config: &InstallConfig) -> Result<bool, ForgeError> {
@@ -1444,48 +1321,6 @@ fn is_node_environment_tool(name: &str) -> bool {
     name == "nvm" || name == "nodejs"
 }
 
-fn install_missing_skills(
-    config: &InstallConfig,
-    profile: Profile,
-    preview: &InstallPreview,
-    selection: &InstallSelection,
-    force: bool,
-    progress: &mut InstallProgress,
-) -> Result<(), ForgeError> {
-    let missing: Vec<(&str, Agent)> = preview
-        .missing_skills()
-        .into_iter()
-        .filter(|status| selection.includes_skill(&status.name, status.agent))
-        .map(|status| (status.name.as_str(), status.agent))
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let profile_def = merged_profile(config, profile)?;
-    let skills = skills_for_names(config, &profile_def.skills)?;
-    for skill in skills {
-        let agents: Vec<Agent> = missing
-            .iter()
-            .filter_map(|(name, agent)| (*name == skill.name).then_some(*agent))
-            .collect();
-        if agents.is_empty() {
-            continue;
-        }
-        progress.next("安装 Skill", &skill.name);
-        let item = InstallItem {
-            name: skill.name.clone(),
-            kind: InstallKind::Skill,
-            source: skill.source.clone(),
-            agents,
-            bins: Vec::new(),
-        };
-        install_skill_item(&item, profile.as_str(), force, false).map_err(|error| {
-            ForgeError::Command(format!("skill {} 安装失败：{error}", skill.name))
-        })?;
-    }
-    Ok(())
-}
-
 fn install_legacy_items(
     config: &InstallConfig,
     options: &InstallOptions,
@@ -1797,25 +1632,6 @@ fn find_prebuilt_binary(root: &Path, bin: &str) -> Option<PathBuf> {
     None
 }
 
-fn agents_from_targets(targets: &[PathBuf]) -> Vec<Agent> {
-    let mut agents = Vec::new();
-    for target in targets {
-        let text = target.display().to_string().replace('\\', "/");
-        if text.contains(".claude/skills") && !agents.contains(&Agent::Claude) {
-            agents.push(Agent::Claude);
-        }
-        if (text.contains("opencode/skills") || text.contains(".config/opencode/skills"))
-            && !agents.contains(&Agent::OpenCode)
-        {
-            agents.push(Agent::OpenCode);
-        }
-    }
-    if agents.is_empty() {
-        agents.push(Agent::Claude);
-    }
-    agents
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1823,7 +1639,7 @@ mod tests {
         display_width, fit_display_width, selectable_install_choices, selection_from_choices,
         selection_window, InstallSession,
     };
-    use crate::engine::models::{Agent, InstallPreview, SkillStatus, ToolStatus};
+    use crate::engine::models::{InstallPreview, ToolStatus};
 
     #[test]
     fn wraps_nvm_commands_after_nvm_is_installed_by_session() {
@@ -1926,39 +1742,19 @@ mod tests {
                     supported: true,
                 },
             ],
-            skills: vec![
-                SkillStatus {
-                    name: "installed-skill".to_string(),
-                    agent: Agent::Claude,
-                    agent_dir: None,
-                    installed: true,
-                    installable: true,
-                },
-                SkillStatus {
-                    name: "missing-skill".to_string(),
-                    agent: Agent::OpenCode,
-                    agent_dir: None,
-                    installed: false,
-                    installable: true,
-                },
-            ],
+            skills: Vec::new(),
         };
 
         let choices = selectable_install_choices(&preview);
-        assert_eq!(choices.len(), 4);
+        assert_eq!(choices.len(), 2);
         assert!(!choices[0].selectable);
         assert!(!choices[0].selected);
         assert!(choices[0].label.contains("已安装：installed-tool 1.0.0"));
         assert!(choices[1].selectable);
         assert!(choices[1].selected);
-        assert!(!choices[2].selectable);
-        assert!(choices[2].label.contains("已安装"));
-        assert!(choices[3].selectable);
 
         let selection = selection_from_choices(&choices);
         assert!(selection.includes_tool("missing-tool"));
         assert!(!selection.includes_tool("installed-tool"));
-        assert!(selection.includes_skill("missing-skill", Agent::OpenCode));
-        assert!(!selection.includes_skill("installed-skill", Agent::Claude));
     }
 }

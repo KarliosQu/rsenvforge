@@ -294,40 +294,6 @@ fn preinstall_commands_are_profile_scoped() {
 }
 
 #[test]
-fn install_skill_supports_opencode_target() {
-    let temp = test_dir("install_skill_supports_opencode_target");
-    let source = temp.join("source");
-    let skill = source.join("skills").join("open-skill");
-    let home = temp.join("home");
-    let opencode = temp.join("opencode-skills");
-    fs::create_dir_all(&opencode).unwrap();
-    fs::create_dir_all(&skill).unwrap();
-    fs::write(
-        skill.join("SKILL.md"),
-        "---\nname: open-skill\n---\n# open\n",
-    )
-    .unwrap();
-
-    let output = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
-        .env("RSENVFORGE_HOME", &home)
-        .env("RSENVFORGE_OPENCODE_DIR", &opencode)
-        .args([
-            "install-skill",
-            source.to_str().unwrap(),
-            "--agent",
-            "opencode",
-            "--force",
-        ])
-        .output()
-        .unwrap();
-
-    assert_success(&output);
-    assert!(opencode.join("open-skill").join("SKILL.md").is_file());
-
-    fs::remove_dir_all(temp).unwrap();
-}
-
-#[test]
 fn install_crate_uses_prebuilt_binary_with_norustup() {
     let temp = test_dir("install_crate_uses_prebuilt_binary_with_norustup");
     let source = temp.join("tool");
@@ -364,38 +330,45 @@ fn install_crate_uses_prebuilt_binary_with_norustup() {
 #[test]
 fn update_reinstalls_registry_items() {
     let temp = test_dir("update_reinstalls_registry_items");
-    let source = temp.join("source");
-    let skill = source.join("skills").join("updatable");
+    let source = temp.join("tool");
     let home = temp.join("home");
-    let claude = temp.join("claude-skills");
-    fs::create_dir_all(&claude).unwrap();
-    fs::create_dir_all(&skill).unwrap();
-    fs::write(skill.join("SKILL.md"), "---\nname: updatable\n---\n# v1\n").unwrap();
+    let bin_dir = temp.join("managed-bin");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::create_dir_all(source.join("dist")).unwrap();
+    fs::write(
+        source.join("Cargo.toml"),
+        "[package]\nname = \"updatable\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    fs::write(source.join("src").join("main.rs"), "fn main() {}\n").unwrap();
+    fs::write(source.join("dist").join(exe_name("updatable")), "v1").unwrap();
 
     let install = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
         .env("RSENVFORGE_HOME", &home)
-        .env("RSENVFORGE_CLAUDE_DIR", &claude)
+        .env("RSENVFORGE_BIN_DIR", &bin_dir)
         .args([
-            "install-skill",
+            "install-crate",
             source.to_str().unwrap(),
-            "--agent",
-            "claude",
+            "--norustup",
             "--force",
         ])
         .output()
         .unwrap();
     assert_success(&install);
 
-    fs::write(skill.join("extra.txt"), "updated").unwrap();
+    fs::write(source.join("dist").join(exe_name("updatable")), "v2").unwrap();
     let update = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
         .env("RSENVFORGE_HOME", &home)
-        .env("RSENVFORGE_CLAUDE_DIR", &claude)
-        .args(["update", "--force"])
+        .env("RSENVFORGE_BIN_DIR", &bin_dir)
+        .args(["update", "--force", "--norustup"])
         .output()
         .unwrap();
 
     assert_success(&update);
-    assert!(claude.join("updatable").join("extra.txt").is_file());
+    assert_eq!(
+        fs::read_to_string(bin_dir.join(exe_name("updatable"))).unwrap(),
+        "v2"
+    );
 
     fs::remove_dir_all(temp).unwrap();
 }
@@ -403,40 +376,41 @@ fn update_reinstalls_registry_items() {
 #[test]
 fn remove_deletes_registry_targets() {
     let temp = test_dir("remove_deletes_registry_targets");
-    let source = temp.join("source");
-    let skill = source.join("skills").join("removable");
+    let source = temp.join("tool");
     let home = temp.join("home");
-    let claude = temp.join("claude-skills");
-    fs::create_dir_all(&claude).unwrap();
-    fs::create_dir_all(&skill).unwrap();
+    let bin_dir = temp.join("managed-bin");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::create_dir_all(source.join("dist")).unwrap();
     fs::write(
-        skill.join("SKILL.md"),
-        "---\nname: removable\n---\n# demo\n",
+        source.join("Cargo.toml"),
+        "[package]\nname = \"removable\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
     )
     .unwrap();
+    fs::write(source.join("src").join("main.rs"), "fn main() {}\n").unwrap();
+    fs::write(source.join("dist").join(exe_name("removable")), "prebuilt").unwrap();
 
     let install = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
         .env("RSENVFORGE_HOME", &home)
-        .env("RSENVFORGE_CLAUDE_DIR", &claude)
+        .env("RSENVFORGE_BIN_DIR", &bin_dir)
         .args([
-            "install-skill",
+            "install-crate",
             source.to_str().unwrap(),
-            "--agent",
-            "claude",
+            "--norustup",
             "--force",
         ])
         .output()
         .unwrap();
     assert_success(&install);
-    assert!(claude.join("removable").is_dir());
+    assert!(bin_dir.join(exe_name("removable")).is_file());
 
     let remove = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
         .env("RSENVFORGE_HOME", &home)
-        .args(["remove", "source", "--kind", "skill", "--force"])
+        .env("RSENVFORGE_BIN_DIR", &bin_dir)
+        .args(["remove", "tool", "--kind", "crate", "--force"])
         .output()
         .unwrap();
     assert_success(&remove);
-    assert!(!claude.join("removable").exists());
+    assert!(!bin_dir.join(exe_name("removable")).exists());
 
     let list = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
         .env("RSENVFORGE_HOME", &home)
@@ -921,62 +895,6 @@ fn installed_tool_post_install_can_be_declined() {
     assert!(!marker.exists());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("已跳过工具安装后命令：installed-post-demo"));
-
-    fs::remove_dir_all(temp).unwrap();
-}
-
-#[test]
-fn missing_agent_skill_dir_skips_skill_install() {
-    let temp = test_dir("missing_agent_skill_dir_skips_skill_install");
-    let source = temp.join("source");
-    let skill = source.join("skills").join("demo-skill");
-    let home = temp.join("home");
-    let missing_claude = temp.join("missing-claude-skills");
-    let config = temp.join("rsenvforge.toml");
-    fs::create_dir_all(&skill).unwrap();
-    fs::write(
-        skill.join("SKILL.md"),
-        "---\nname: demo-skill\n---\n# demo\n",
-    )
-    .unwrap();
-    fs::write(
-        &config,
-        format!(
-            r#"
-            [profiles.light]
-            tools = []
-            skills = ["demo-skill"]
-            items = []
-            [profiles.standard]
-            tools = []
-            skills = ["demo-skill"]
-            items = []
-            [profiles.full]
-            tools = []
-            skills = ["demo-skill"]
-            items = []
-            [[skills]]
-            name = "demo-skill"
-            source = "{}"
-            agents = ["claude"]
-            "#,
-            path_for_config(&source)
-        ),
-    )
-    .unwrap();
-
-    let output = command_with_input(
-        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
-            .env("RSENVFORGE_HOME", &home)
-            .env("RSENVFORGE_CLAUDE_DIR", &missing_claude)
-            .args(["install", "light", "--config", config.to_str().unwrap()]),
-        "Y\n",
-    );
-
-    assert_success(&output);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("skill"));
-    assert!(!missing_claude.exists());
 
     fs::remove_dir_all(temp).unwrap();
 }

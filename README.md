@@ -1,6 +1,6 @@
 # rsenvforge
 
-`rsenvforge` 是一个用于准备 Rust 开发环境的命令行工具。它读取 `rsenvforge.toml` 中的安装表单，先检测工具和 agent skill 的安装状态，再询问是否安装缺失项。
+`rsenvforge` 是一个用于准备 Rust 开发环境的命令行工具。它读取 `rsenvforge.toml` 中的安装表单，先检测工具安装状态，再询问是否安装缺失项。
 
 默认命令：
 
@@ -33,10 +33,9 @@ rsenvforge install
 ```text
 rsenvforge init [--force]
 rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup]
-rsenvforge install-skill <source> --agent <claude|opencode|both> [--force]
 rsenvforge install-crate <source> [--norustup] [--force] [--bin <name>]
 rsenvforge update [--force] [--norustup]
-rsenvforge remove <name> [--kind <skill|crate>] [--force]
+rsenvforge remove <name> [--kind <crate>] [--force]
 rsenvforge list
 rsenvforge doctor
 rsenvforge apt-mirror <show|check|apply> [--config <path>]
@@ -62,7 +61,7 @@ rsenvforge init --force
 
 ## 安装流程
 
-`install` 会先输出代理检查，再输出工具和 skill 的检测结果。已安装工具会显示版本，未安装工具会列为缺失项。不支持当前平台的工具会直接提示，例如：
+`install` 会先输出代理检查，再输出工具检测结果。已安装工具会显示版本，未安装工具会列为缺失项。不支持当前平台的工具会直接提示，例如：
 
 ```text
 valgrind：不支持windows环境
@@ -76,7 +75,7 @@ valgrind：不支持windows环境
 以上为目前工具安装情况，请问是否安装缺失工具？(Y/N)
 ```
 
-只有输入 `Y` 或 `y` 才会继续安装。安装过程中会以 `Step 当前/总数` 展示整体组件安装进度；APT 镜像验证/写入、安装前置命令和每个工具/skill 安装都会纳入 Step，例如：
+只有输入 `Y` 或 `y` 才会继续安装。安装过程中会以 `Step 当前/总数` 展示整体组件安装进度；APT 镜像验证/写入、安装前置命令和每个工具安装都会纳入 Step，例如：
 
 ```text
 Step 1/4：配置 APT 镜像
@@ -250,7 +249,7 @@ Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。
 
 ## 配置格式
 
-配置由 `environment`、`preinstall`、`profiles`、`tag_checks`、`tools`、`skills` 和 `items` 组成。默认配置把环境变量和安装前置命令放在文件最前面，便于先配置内网镜像和基础环境：
+配置由 `environment`、`preinstall`、`profiles`、`tag_checks`、`tools` 和 `items` 组成。默认配置把环境变量和安装前置命令放在文件最前面，便于先配置内网镜像和基础环境：
 
 ```toml
 [environment]
@@ -260,6 +259,7 @@ cargo_config = [
 ]
 bashrc = [
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
+  "export PATH=\"$HOME/.local/bin:$PATH\"",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
@@ -271,12 +271,10 @@ commands = []
 
 [profiles.standard]
 tools = ["rust-toolchain", "cargo-audit", "nodejs"]
-skills = []
 items = []
 
 [profiles.full]
 tools = []
-skills = []
 items = []
 
 [tag_checks.github]
@@ -286,15 +284,10 @@ check_linux = "git ls-remote https://github.com/github/gitignore.git HEAD"
 [[tools]]
 name = "nodejs"
 check_windows = "node --version && npm --version"
-check_linux = "node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
+check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; version=$(node --version) || exit $?; npm --version || exit $?; echo \"$version\"; major=${version#v}; major=${major%%.*}; test \"$major\" -ge 20"
 install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
 install_linux = "echo 请参考根目录 rsenvforge.toml 中 nodejs 的完整离线安装命令"
 post_install_linux = "node --version && npm --version"
-
-[[skills]]
-name = "superpowers"
-source = "https://github.com/obra/superpowers.git"
-agents = ["claude", "opencode"]
 ```
 
 Linux 下直接安装 Node.js 时，推荐在环境配置中提供 Node.js 压缩包模板地址：
@@ -303,9 +296,10 @@ Linux 下直接安装 Node.js 时，推荐在环境配置中提供 Node.js 压�
 export RSENVFORGE_NODEJS_ARCHIVE_URL=https://mirrors.com/nodejs/v{version}/node-v{version}-linux-{arch}.tar.gz
 export RSENVFORGE_NODEJS_MIRROR=http://7.222.7.221/nodejs
 export RSENVFORGE_NODEJS_VERSION=20.17.0
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`RSENVFORGE_NODEJS_ARCHIVE_URL` 支持 `{version}`、`{arch}`、`{platform}`、`{package}` 四个变量。`{arch}` 会在 Linux 下自动替换为 `x64` 或 `arm64`，所以同一条模板可以覆盖 x64 和 arm64。压缩包后缀支持 `.tar.gz`、`.tgz` 和 `.tar.xz`。
+`RSENVFORGE_NODEJS_ARCHIVE_URL` 支持 `{version}`、`{arch}`、`{platform}`、`{package}` 四个变量。`{arch}` 会在 Linux 下自动替换为 `x64` 或 `arm64`，所以同一条模板可以覆盖 x64 和 arm64。压缩包后缀支持 `.tar.gz`、`.tgz` 和 `.tar.xz`。`export PATH="$HOME/.local/bin:$PATH"` 用于让当前安装进程和后续终端优先找到 rsenvforge 直装的 Node.js。
 
 如果只配置 `RSENVFORGE_NODEJS_MIRROR`，rsenvforge 会按默认规则拼接为 `${RSENVFORGE_NODEJS_MIRROR}/v{version}/{package}.tar.gz`。
 
@@ -405,26 +399,6 @@ tags = ["cargo-install", "cargo-mirror"]
 
 以后添加 `npm install`、`npm ci` 等命令时，可按工具实际要求显式添加 `node20` 和 `npm-mirror`。如果 Node.js 主版本低于 20，`node20` 检查会失败，并询问是否跳过当前工具。Linux 下默认 `gitnexus` 会使用 `nodejs` 工具直装的 Node 20.17.0。标签的当前平台字段为 `"0"` 时，程序会明确提示该标签不支持当前平台，并继续询问是否跳过当前工具。
 
-## Skill 安装
-
-`rsenvforge` 支持安装到 Claude Code 和 OpenCode 的默认 skill 目录：
-
-| Agent | 默认目录 |
-| --- | --- |
-| Claude Code | `~/.claude/skills` |
-| OpenCode Windows | `%APPDATA%\opencode\skills` |
-| OpenCode Linux | `~/.config/opencode/skills` |
-
-如果默认目录不存在，工具会提示并跳过该 agent 的 skill 安装，不会自动创建目录。
-
-扫描 skill 时会查找：
-
-| 位置 | 说明 |
-| --- | --- |
-| `SKILL.md` | 仓库根目录下的单个 skill |
-| `skills/*/SKILL.md` | 通用 skills 目录 |
-| `.claude/skills/*/SKILL.md` | Claude 风格 skills 目录 |
-
 ## Crate 安装
 
 `install-crate` 可从 Git 地址或本地路径安装 Rust binary：
@@ -459,15 +433,14 @@ rsenvforge update
 
 ```powershell
 rsenvforge remove <name>
-rsenvforge remove <name> --kind skill
 rsenvforge remove <name> --kind crate --force
 ```
 
 说明：
 
-- `--kind skill|crate` 用于在同名记录中限定类型。
+- `--kind crate` 用于在同名记录中限定类型。
 - `--force` 跳过删除确认。
-- 删除只处理 registry 中记录的目标路径，例如 skill 目录或 `install-crate` 复制到托管 bin 目录的二进制。
+- 删除只处理 registry 中记录的目标路径，例如 `install-crate` 复制到托管 bin 目录的二进制。
 - 通过系统包管理器、`cargo install` 或 `winget/apt-get/npm` 安装的 profile 工具当前不会写入 registry，因此 `remove` 不会卸载这些系统级工具。
 
 ## 环境变量
@@ -477,8 +450,6 @@ rsenvforge remove <name> --kind crate --force
 | `RSENVFORGE_HOME` | 工具数据目录 |
 | `RSENVFORGE_CONFIG_DIR` | 用户配置目录 |
 | `RSENVFORGE_BIN_DIR` | 工具管理的 bin 目录 |
-| `RSENVFORGE_CLAUDE_DIR` | Claude skill 目录 |
-| `RSENVFORGE_OPENCODE_DIR` | OpenCode skill 目录 |
 
 ## 诊断
 
@@ -486,4 +457,4 @@ rsenvforge remove <name> --kind crate --force
 rsenvforge doctor
 ```
 
-该命令会显示数据目录、bin 目录、registry 路径，以及 `git`、`cargo`、`rustup`、`claude`、`opencode` 的检测状态。
+该命令会显示数据目录、bin 目录、registry 路径，以及 `git`、`cargo`、`rustup` 等基础工具的检测状态。

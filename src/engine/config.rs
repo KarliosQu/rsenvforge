@@ -535,27 +535,6 @@ pub(crate) fn tools_for_names(
     Ok(tools)
 }
 
-pub(crate) fn skills_for_names(
-    config: &InstallConfig,
-    names: &[String],
-) -> Result<Vec<SkillDef>, ForgeError> {
-    let mut skills = Vec::new();
-    for name in names {
-        let skill = config
-            .skills
-            .iter()
-            .find(|skill| &skill.name == name)
-            .cloned()
-            .unwrap_or_else(|| SkillDef {
-                name: name.clone(),
-                source: String::new(),
-                agents: vec![Agent::Claude, Agent::OpenCode],
-            });
-        skills.push(skill);
-    }
-    Ok(skills)
-}
-
 pub(crate) fn builtin_cargo_tool(name: &str) -> Option<ToolDef> {
     if name == "rust-build-base" {
         return Some(ToolDef {

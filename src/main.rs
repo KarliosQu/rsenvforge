@@ -5,9 +5,8 @@ use std::process;
 
 use rsenvforge::{
     apply_apt_mirror, apt_mirror_preview, check_apt_mirror, doctor_report, init_config,
-    install_crate_source, install_profile, install_skill_source, load_config, read_registry,
-    remove_installed, update_installed, Agent, AptMirrorPreview, InstallKind, InstallOptions,
-    Profile,
+    install_crate_source, install_profile, load_config, read_registry, remove_installed,
+    update_installed, AptMirrorPreview, InstallKind, InstallOptions, Profile,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -28,7 +27,6 @@ fn run(args: Vec<String>) -> Result<(), String> {
     match command {
         "init" => cmd_init(&args[1..]),
         "install" => cmd_install(&args[1..]),
-        "install-skill" => cmd_install_skill(&args[1..]),
         "install-crate" => cmd_install_crate(&args[1..]),
         "update" => cmd_update(&args[1..]),
         "remove" | "uninstall" => cmd_remove(&args[1..]),
@@ -96,41 +94,6 @@ fn cmd_install(args: &[String]) -> Result<(), String> {
             entry.targets.len()
         );
     }
-    Ok(())
-}
-
-fn cmd_install_skill(args: &[String]) -> Result<(), String> {
-    let mut source = None;
-    let mut agents = Vec::new();
-    let mut force = false;
-    let mut index = 0;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--agent" => {
-                index += 1;
-                agents = parse_agent_list(value_after(args, index, "--agent")?)?;
-            }
-            "--force" | "-f" => force = true,
-            value if value.starts_with('-') => {
-                return Err(format!("未知 install-skill 选项：{value}"))
-            }
-            value => {
-                if source.replace(value.to_string()).is_some() {
-                    return Err("install-skill 只能接受一个 source".to_string());
-                }
-            }
-        }
-        index += 1;
-    }
-
-    let source = source.ok_or_else(|| "缺少 source".to_string())?;
-    if agents.is_empty() {
-        return Err("install-skill 需要 --agent claude|opencode|both".to_string());
-    }
-    let entries =
-        install_skill_source(&source, &agents, force).map_err(|error| error.to_string())?;
-    println!("已安装 {} 条 skill 记录", entries.len());
     Ok(())
 }
 
@@ -217,7 +180,11 @@ fn cmd_list(args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
         return Err("list 不接受参数".to_string());
     }
-    let entries = read_registry().map_err(|error| error.to_string())?;
+    let entries = read_registry()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|entry| entry.kind == InstallKind::Crate)
+        .collect::<Vec<_>>();
     if entries.is_empty() {
         println!("暂无安装记录");
     } else {
@@ -318,20 +285,9 @@ fn confirm() -> Result<bool, String> {
 
 fn parse_install_kind(value: &str) -> Result<InstallKind, String> {
     match value {
-        "skill" => Ok(InstallKind::Skill),
         "crate" => Ok(InstallKind::Crate),
-        _ => Err(format!("未知安装项类型：{value}，可用值为 skill|crate")),
+        _ => Err(format!("未知安装项类型：{value}")),
     }
-}
-
-fn parse_agent_list(value: &str) -> Result<Vec<Agent>, String> {
-    if value == "both" {
-        return Ok(vec![Agent::Claude, Agent::OpenCode]);
-    }
-    value
-        .split(',')
-        .map(|agent| Agent::parse(agent.trim()).map_err(|error| error.to_string()))
-        .collect()
 }
 
 fn value_after<'a>(args: &'a [String], index: usize, option: &str) -> Result<&'a str, String> {
@@ -350,7 +306,6 @@ fn print_help() {
 命令：
     init [--force]                 在当前目录生成默认 rsenvforge.toml
     install [light|standard|full]  从 rsenvforge.toml 检测并安装，默认 standard
-    install-skill <source>         从 Git 地址或本地路径安装 agent skill
     install-crate <source>         从 Git 地址或本地路径安装 Rust binary crate
     update                         更新 rsenvforge 记录过的安装项
     remove <name>                  删除 rsenvforge 记录过的安装项
@@ -362,12 +317,11 @@ fn print_help() {
 
 选项：
     install --config <path>        使用自定义安装表单
-    install --force                覆盖已有 skill/tool 目标
+    install --force                覆盖已有目标
     install --norustup             crate 安装时跳过 rustup 检查
-    install-skill --agent <value>  claude、opencode 或 both
     install-crate --bin <name>     只安装指定 binary
     apt-mirror --config <path>     使用指定的镜像配置文件
-    remove --kind <value>          skill 或 crate
+    remove --kind <value>          限定记录类型
     remove --force                 跳过删除确认
 "
     );

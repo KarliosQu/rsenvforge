@@ -61,7 +61,10 @@ fn parse_export_line(line: &str) -> Option<(&str, String)> {
     {
         return None;
     }
-    Some((name, unquote_export_value(value.trim()).to_string()))
+    Some((
+        name,
+        expand_export_value(unquote_export_value(value.trim())),
+    ))
 }
 
 fn unquote_export_value(value: &str) -> &str {
@@ -74,6 +77,16 @@ fn unquote_export_value(value: &str) -> &str {
                 .and_then(|value| value.strip_suffix('\''))
         })
         .unwrap_or(value)
+}
+
+fn expand_export_value(value: &str) -> String {
+    let home = home_dir().display().to_string();
+    let path = env::var("PATH").unwrap_or_default();
+    value
+        .replace("${HOME}", &home)
+        .replace("$HOME", &home)
+        .replace("${PATH}", &path)
+        .replace("$PATH", &path)
 }
 
 pub(crate) fn refresh_rust_process_environment() {
@@ -399,10 +412,20 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let old_url = env::var_os("RSENVFORGE_TEST_EXPORT_URL");
         let old_quoted = env::var_os("RSENVFORGE_QUOTED_VALUE");
+        let old_userprofile = env::var_os("USERPROFILE");
+        let old_home = env::var_os("HOME");
+        let old_path = env::var_os("PATH");
+        let temp =
+            std::env::temp_dir().join(format!("rsenvforge-envfile-export-{}", std::process::id()));
+
+        env::set_var("USERPROFILE", &temp);
+        env::set_var("HOME", &temp);
+        env::set_var("PATH", "old-path");
 
         apply_export_lines_to_process(&[
             "export RSENVFORGE_TEST_EXPORT_URL=https://mirror.example/demo.sh".to_string(),
             "export RSENVFORGE_QUOTED_VALUE=\"hello world\"".to_string(),
+            "export PATH=\"$HOME/.local/bin:$PATH\"".to_string(),
             "export 1INVALID=ignored".to_string(),
         ]);
 
@@ -411,10 +434,17 @@ mod tests {
             "https://mirror.example/demo.sh"
         );
         assert_eq!(env::var("RSENVFORGE_QUOTED_VALUE").unwrap(), "hello world");
+        assert_eq!(
+            env::var("PATH").unwrap(),
+            format!("{}/.local/bin:old-path", temp.display())
+        );
         assert!(env::var_os("1INVALID").is_none());
 
         restore_env("RSENVFORGE_TEST_EXPORT_URL", old_url);
         restore_env("RSENVFORGE_QUOTED_VALUE", old_quoted);
+        restore_env("USERPROFILE", old_userprofile);
+        restore_env("HOME", old_home);
+        restore_env("PATH", old_path);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # rsenvforge 使用手册
 
-`rsenvforge` 是一个基于 TOML 安装表单的开发环境准备工具。它可以检测并安装 Rust 工具、agent skill 和其他配置项；所有需要安装或修改系统状态的操作都会以中文输出进度并要求确认。
+`rsenvforge` 是一个基于 TOML 安装表单的开发环境准备工具。它可以检测并安装 Rust 工具和其他配置项；所有需要安装或修改系统状态的操作都会以中文输出进度并要求确认。
 
 ## 安装与启动
 
@@ -25,16 +25,15 @@ Linux 使用相同的 Cargo 命令。需要配置 APT 源时，请在 Linux 或 
 | --- | --- |
 | `init [--force]` | 在当前目录生成二进制内置的默认配置。 |
 | `install [light|standard|full] [--config <path>]` | 检测并安装选定 profile；省略等级时使用 `standard`。 |
-| `install-skill <source> --agent <claude|opencode|both>` | 从本地路径或 Git 地址安装 agent skill。 |
 | `install-crate <source> [--bin <name>] [--norustup]` | 从本地路径或 Git 地址安装 Rust binary crate。 |
 | `update [--force] [--norustup]` | 更新由 rsenvforge 记录过的安装项。 |
-| `remove <name> [--kind <skill|crate>] [--force]` | 删除由 rsenvforge 记录过的安装项。 |
+| `remove <name> [--kind <crate>] [--force]` | 删除由 rsenvforge 记录过的安装项。 |
 | `list` | 显示本地安装记录。 |
 | `doctor` | 显示代理、Cargo 配置、管理目录与工具诊断信息。 |
 | `apt-mirror show|check|apply [--config <path>]` | 显示、临时验证或写入内部 APT 镜像配置。 |
 | `help` / `version` | 显示帮助或版本。 |
 
-`install`、`install-skill`、`install-crate`、`update` 和 `remove` 支持 `--force` 的范围以各自命令帮助为准。`--force` 不等于自动确认安装；普通 `install` 仍会等待 `Y/N`。
+`install`、`install-crate`、`update` 和 `remove` 支持 `--force` 的范围以各自命令帮助为准。`--force` 不等于自动确认安装；普通 `install` 仍会等待 `Y/N`。
 
 交互终端中，`install` 会在确认安装前显示可勾选安装列表。默认全选；使用方向键移动，空格切换，`Enter` 确认，`A` 全选/全不选，`Esc` 或 `Q` 取消。脚本或管道环境中会保留 `Y/N` 确认并默认全选。
 
@@ -54,22 +53,19 @@ Linux 使用相同的 Cargo 命令。需要配置 APT 源时，请在 Linux 或 
 
 ## Profile
 
-profile 会按等级累积：`standard` 包含 `light + standard`，`full` 包含 `light + standard + full`。同名工具、skill 与旧式 item 会自动去重。
+profile 会按等级累积：`standard` 包含 `light + standard`，`full` 包含 `light + standard + full`。同名工具与旧式 item 会自动去重。
 
 ```toml
 [profiles.light]
 tools = ["cargo-audit"]
-skills = []
 items = []
 
 [profiles.standard]
 tools = ["rust-toolchain", "nodejs"]
-skills = []
 items = []
 
 [profiles.full]
 tools = []
-skills = []
 items = []
 ```
 
@@ -142,6 +138,7 @@ cargo_config = [
 ]
 bashrc = [
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
+  "export PATH=\"$HOME/.local/bin:$PATH\"",
   ". \"$HOME/.cargo/env\"",
 ]
 npmrc = [
@@ -249,9 +246,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，也会在执行
 
 `apply` 不会替换、删除或禁用 `/etc/apt/sources.list` 和其他 `sources.list.d` 文件。因此默认行为是“新增内网源”，不是“强制只使用内网源”。如需完全切换源，应由运维策略在验证成功后处理旧源文件。rsenvforge 不会设置 `trusted=yes` 或关闭签名校验，`signed_by` 指向的 GPG key 必须由受信任的渠道预先部署。
 
-## Skill 与 crate
-
-`install-skill` 支持 Claude Code 和 OpenCode。Claude Code 默认目录为 `~/.claude/skills`；OpenCode 在 Windows 为 `%APPDATA%\opencode\skills`，在 Linux 为 `~/.config/opencode/skills`。如果目标 agent 目录不存在，rsenvforge 会提示并跳过，不会自动创建。
+## Crate 安装
 
 `install-crate` 可以从本地路径或 Git 地址扫描根 `Cargo.toml` 与 `crates/*/Cargo.toml`。`--bin` 可限定要复制的 binary；`--norustup` 会跳过 rustup 检查，优先使用预编译 binary 或已有 Cargo。
 
