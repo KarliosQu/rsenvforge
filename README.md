@@ -32,7 +32,7 @@ rsenvforge install
 
 ```text
 rsenvforge init [--force]
-rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup]
+rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup] [--status-bar]
 rsenvforge install-crate <source> [--norustup] [--force] [--bin <name>]
 rsenvforge update [--force] [--norustup]
 rsenvforge remove <name> [--kind <crate>] [--force]
@@ -97,12 +97,14 @@ Step 4/4：安装工具 gitnexus
 
 工具安装命令运行期间，界面会持续提示“安装过程中可输入 T 后回车，强制跳过当前工具”。输入 `T` 或 `t` 后回车会终止当前安装命令，标记该工具为已跳过，并继续安装后续工具。
 
-安装命令不会因为耗时较长而被自动停止。单个安装命令持续运行到 `120` 秒时会输出一次提醒，之后按 `240`、`480`、`960` 秒继续翻倍提醒，并显示当前已经收集到的命令行输出：
+安装命令不会因为耗时较长而被自动停止。单个安装命令持续运行到 `120` 秒时会输出一次提醒，之后按 `240`、`480`、`960` 秒继续翻倍提醒，并显示当前已经收集到的命令行输出，最多保留最近 `5` 行：
 
 ```text
-目前cargo-geiger的安装已经持续了120秒，请注意，目前进度为：
+目前cargo-geiger的安装已经持续了120秒，请注意，目前进度为（最多显示最近 5 行）：
 ...
 ```
+
+如果希望在交互式终端底部显示常驻安装状态，可以为 `install` 添加 `--status-bar`。该模式只在 TTY 终端中启用；在 CI、重定向输出、测试等非交互环境中会自动回退为普通文本输出，不改变默认安装效果。
 
 ## 代理检查
 

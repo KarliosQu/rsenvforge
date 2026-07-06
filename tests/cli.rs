@@ -513,6 +513,56 @@ fn install_defaults_to_all_selected_and_prints_steps_in_non_tty() {
 }
 
 #[test]
+fn install_status_bar_falls_back_in_non_tty() {
+    let temp = test_dir("install_status_bar_falls_back_in_non_tty");
+    let home = temp.join("home");
+    let config = temp.join("rsenvforge.toml");
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(
+        &config,
+        r#"
+        [profiles.light]
+        tools = ["status-demo"]
+        skills = []
+        items = []
+        [profiles.standard]
+        tools = ["status-demo"]
+        skills = []
+        items = []
+        [profiles.full]
+        tools = ["status-demo"]
+        skills = []
+        items = []
+        [[tools]]
+        name = "status-demo"
+        check = "definitely-missing-rsenvforge-status-demo --version"
+        install = "echo install-status-demo"
+        "#,
+    )
+    .unwrap();
+
+    let output = command_with_input(
+        Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+            .env("RSENVFORGE_HOME", &home)
+            .args([
+                "install",
+                "light",
+                "--status-bar",
+                "--config",
+                config.to_str().unwrap(),
+            ]),
+        "Y\n",
+    );
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("状态栏模式仅在交互式终端启用"));
+    assert!(stdout.contains("开始安装工具：status-demo"));
+
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn non_installable_tool_stops_with_message() {
     let temp = test_dir("non_installable_tool_stops_with_message");
     let home = temp.join("home");

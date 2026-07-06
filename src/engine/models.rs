@@ -335,6 +335,7 @@ pub struct InstallOptions {
     pub config_path: Option<PathBuf>,
     pub force: bool,
     pub norustup: bool,
+    pub status_bar: bool,
 }
 
 impl Default for InstallOptions {
@@ -344,6 +345,7 @@ impl Default for InstallOptions {
             config_path: None,
             force: false,
             norustup: false,
+            status_bar: false,
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -10,6 +10,14 @@ use super::input::try_read_skip_request;
 
 const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
 const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
+const PROGRESS_NOTICE_MAX_LINES: usize = 5;
+const STATUS_BAR_LINES: u16 = 9;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShellDisplayMode {
+    Plain,
+    StatusBar,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ShellRunStatus {
@@ -18,14 +26,23 @@ pub(crate) enum ShellRunStatus {
 }
 
 pub(crate) fn run_shell_labeled(label: &str, command: &str) -> Result<ShellRunStatus, ForgeError> {
-    run_shell_labeled_with_options(label, command, true, true)
+    run_shell_labeled_with_options(label, command, true, true, ShellDisplayMode::Plain)
 }
 
-pub(crate) fn run_shell_labeled_quiet(
+pub(crate) fn run_shell_labeled_display(
     label: &str,
     command: &str,
+    mode: ShellDisplayMode,
 ) -> Result<ShellRunStatus, ForgeError> {
-    run_shell_labeled_with_options(label, command, false, false)
+    run_shell_labeled_with_options(label, command, true, true, mode)
+}
+
+pub(crate) fn run_shell_labeled_quiet_display(
+    label: &str,
+    command: &str,
+    mode: ShellDisplayMode,
+) -> Result<ShellRunStatus, ForgeError> {
+    run_shell_labeled_with_options(label, command, false, false, mode)
 }
 
 fn run_shell_labeled_with_options(
@@ -33,11 +50,13 @@ fn run_shell_labeled_with_options(
     command: &str,
     show_skip_hint: bool,
     include_command_on_error: bool,
+    display_mode: ShellDisplayMode,
 ) -> Result<ShellRunStatus, ForgeError> {
     let command = command_for_current_user(command);
     if show_skip_hint {
         print_skip_hint(label);
     }
+    let mut status_bar = StatusBar::new(label, show_skip_hint, display_mode);
     let mut child = shell_command(&command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -64,6 +83,7 @@ fn run_shell_labeled_with_options(
             terminate_child_process(&mut child);
             join_output_thread(stdout_handle, &command)?;
             join_output_thread(stderr_handle, &command)?;
+            status_bar.finish();
             println!("已收到跳过指令，正在跳过当前安装：{label}");
             return Ok(ShellRunStatus::Skipped);
         }
@@ -76,11 +96,13 @@ fn run_shell_labeled_with_options(
         }
 
         let elapsed = started.elapsed().as_secs();
+        status_bar.render(elapsed, &output);
         if elapsed >= next_notice {
             print_progress_notice(label, elapsed, &output);
             if show_skip_hint {
                 print_skip_hint(label);
             }
+            status_bar.render(elapsed, &output);
             next_notice = next_notice.saturating_mul(2);
         }
 
@@ -89,6 +111,7 @@ fn run_shell_labeled_with_options(
 
     join_output_thread(stdout_handle, &command)?;
     join_output_thread(stderr_handle, &command)?;
+    status_bar.finish();
 
     if status.success() {
         Ok(ShellRunStatus::Completed)
@@ -216,12 +239,120 @@ fn push_output(output: &Arc<Mutex<String>>, text: &str) {
 
 fn print_progress_notice(label: &str, elapsed: u64, output: &Arc<Mutex<String>>) {
     let snapshot = output_snapshot(output);
-    let progress = if snapshot.trim().is_empty() {
-        "暂无命令输出".to_string()
-    } else {
-        snapshot
-    };
-    println!("目前{label}的安装已经持续了{elapsed}秒，请注意，目前进度为：\n{progress}");
+    let progress = progress_notice_output(&snapshot);
+    println!(
+        "目前{label}的安装已经持续了{elapsed}秒，请注意，目前进度为（最多显示最近 {PROGRESS_NOTICE_MAX_LINES} 行）：\n{progress}"
+    );
+}
+
+fn progress_notice_output(output: &str) -> String {
+    let output = output.replace('\r', "\n");
+    if output.trim().is_empty() {
+        return "暂无命令输出".to_string();
+    }
+
+    let mut lines = output
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+    if lines.len() > PROGRESS_NOTICE_MAX_LINES {
+        lines = lines.split_off(lines.len() - PROGRESS_NOTICE_MAX_LINES);
+    }
+    lines.join("\n")
+}
+
+struct StatusBar {
+    label: String,
+    show_skip_hint: bool,
+    active: bool,
+}
+
+impl StatusBar {
+    fn new(label: &str, show_skip_hint: bool, mode: ShellDisplayMode) -> Self {
+        let active = matches!(mode, ShellDisplayMode::StatusBar) && io::stdout().is_terminal();
+        if matches!(mode, ShellDisplayMode::StatusBar) && !active {
+            println!("状态栏模式仅在交互式终端启用，当前使用普通文本输出。");
+        }
+        Self {
+            label: label.to_string(),
+            show_skip_hint,
+            active,
+        }
+    }
+
+    fn render(&mut self, elapsed: u64, output: &Arc<Mutex<String>>) {
+        if !self.active {
+            return;
+        }
+        let snapshot = output_snapshot(output);
+        let recent = progress_notice_output(&snapshot);
+        let lines = status_bar_lines(&self.label, elapsed, self.show_skip_hint, &recent);
+        if draw_status_bar(&lines).is_err() {
+            self.active = false;
+        }
+    }
+
+    fn finish(&mut self) {
+        if !self.active {
+            return;
+        }
+        let _ = clear_status_bar();
+        self.active = false;
+    }
+}
+
+fn status_bar_lines(
+    label: &str,
+    elapsed: u64,
+    show_skip_hint: bool,
+    recent_output: &str,
+) -> Vec<String> {
+    let mut lines = vec![
+        "──────────────── rsenvforge 安装状态 ────────────────".to_string(),
+        format!("当前组件：{label}"),
+        format!("已运行：{elapsed} 秒"),
+        "最近输出：".to_string(),
+    ];
+    lines.extend(
+        recent_output
+            .lines()
+            .take(PROGRESS_NOTICE_MAX_LINES)
+            .map(|line| format!("  {line}")),
+    );
+    if show_skip_hint {
+        lines.push("操作：输入 T 后回车跳过当前组件".to_string());
+    }
+    lines
+}
+
+fn draw_status_bar(lines: &[String]) -> io::Result<()> {
+    let (_, height) = crossterm::terminal::size()?;
+    let start_row = height.saturating_sub(STATUS_BAR_LINES).saturating_add(1);
+    let mut out = io::stdout();
+    write!(out, "\x1b7")?;
+    for offset in 0..STATUS_BAR_LINES {
+        let row = start_row.saturating_add(offset);
+        write!(out, "\x1b[{row};1H\x1b[2K")?;
+        if let Some(line) = lines.get(offset as usize) {
+            write!(out, "{line}")?;
+        }
+    }
+    write!(out, "\x1b8")?;
+    out.flush()
+}
+
+fn clear_status_bar() -> io::Result<()> {
+    let (_, height) = crossterm::terminal::size()?;
+    let start_row = height.saturating_sub(STATUS_BAR_LINES).saturating_add(1);
+    let mut out = io::stdout();
+    write!(out, "\x1b7")?;
+    for offset in 0..STATUS_BAR_LINES {
+        let row = start_row.saturating_add(offset);
+        write!(out, "\x1b[{row};1H\x1b[2K")?;
+    }
+    write!(out, "\x1b8")?;
+    out.flush()
 }
 
 fn print_skip_hint(label: &str) {
@@ -292,7 +423,7 @@ pub(crate) fn command_status_text(command: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_sudo_from_apt_commands;
+    use super::{progress_notice_output, status_bar_lines, strip_sudo_from_apt_commands};
 
     #[test]
     fn strips_sudo_only_from_apt_commands() {
@@ -307,6 +438,32 @@ mod tests {
         assert_eq!(
             strip_sudo_from_apt_commands("sudo systemctl restart demo"),
             "sudo systemctl restart demo"
+        );
+    }
+
+    #[test]
+    fn progress_notice_output_keeps_recent_five_lines() {
+        let progress = progress_notice_output("line1\nline2\nline3\nline4\nline5\nline6\nline7\n");
+
+        assert_eq!(progress, "line3\nline4\nline5\nline6\nline7");
+        assert_eq!(progress.lines().count(), 5);
+    }
+
+    #[test]
+    fn progress_notice_output_reports_empty_output() {
+        assert_eq!(progress_notice_output("\n\r\n"), "暂无命令输出");
+    }
+
+    #[test]
+    fn status_bar_lines_include_recent_output_and_skip_hint() {
+        let lines = status_bar_lines("demo-tool", 123, true, "a\nb\nc\nd\ne");
+
+        assert!(lines.iter().any(|line| line.contains("demo-tool")));
+        assert!(lines.iter().any(|line| line.contains("123 秒")));
+        assert!(lines.iter().any(|line| line.contains("输入 T 后回车")));
+        assert_eq!(
+            lines.iter().filter(|line| line.starts_with("  ")).count(),
+            5
         );
     }
 }

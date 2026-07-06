@@ -71,6 +71,7 @@ fn cmd_install(args: &[String]) -> Result<(), String> {
             }
             "--force" | "-f" => options.force = true,
             "--norustup" => options.norustup = true,
+            "--status-bar" => options.status_bar = true,
             value if Profile::parse(value).is_some() => {
                 options.profile = Profile::parse(value).expect("checked above");
             }
@@ -319,6 +320,7 @@ fn print_help() {
     install --config <path>        使用自定义安装表单
     install --force                覆盖已有目标
     install --norustup             crate 安装时跳过 rustup 检查
+    install --status-bar           在交互式终端显示底部安装状态栏
     install-crate --bin <name>     只安装指定 binary
     apt-mirror --config <path>     使用指定的镜像配置文件
     remove --kind <value>          限定记录类型
