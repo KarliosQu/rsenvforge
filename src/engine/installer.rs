@@ -454,15 +454,7 @@ impl WindowsRustBuildToolStatus {
     }
 }
 
-const WINDOWS_MSVC_CHECK_COMMAND: &str = "powershell -NoProfile -Command \"\
-$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'; \
-$cl = Get-Command cl.exe -ErrorAction SilentlyContinue; \
-if ($cl) { cl.exe 2>&1 | Select-Object -First 1; exit 0 }; \
-if (Test-Path $vswhere) { \
-  $version = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion; \
-  if ($LASTEXITCODE -eq 0 -and $version) { Write-Output ('Visual Studio C++ Build Tools ' + $version); exit 0 } \
-}; \
-exit 1\"";
+const WINDOWS_MSVC_CHECK_COMMAND: &str = "where cl || \"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion";
 
 const WINDOWS_MSVC_INSTALL_COMMAND: &str = "winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override \"--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"";
 

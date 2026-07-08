@@ -225,11 +225,11 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
 | 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；Windows: 已有 MSVC 时安装 `stable-x86_64-pc-windows-msvc`，只有 GNU 时安装 `stable-x86_64-pc-windows-gnu`，两者都没有时先补 GNU |
 | 工具 | `nodejs` | Linux: 从 Node.js 模板地址下载 20.17.0 压缩包并安装到 `~/.local/opt`；Windows: 使用 winget 安装 Node.js LTS |
-| 工具 | `gitnexus` | 复用 `nodejs` 准备好的 Node 20+，执行 `npm install -g gitnexus --ignore-scripts` |
+| 工具 | `gitnexus` | 复用 `nodejs` 准备好的 Node 20+，按平台选择离线包执行 `npm install -g <package-url>` |
 
 Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` 模板地址，替换 `{version}`、`{arch}`、`{platform}`、`{package}` 后下载 Node.js 20.17.0 压缩包到 `~/.local/opt`，并将 `~/.local/bin` 写入 PATH。未配置模板地址时，会使用 `RSENVFORGE_NODEJS_MIRROR` 拼接默认下载路径。`nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境，并把 `$(npm prefix -g)/bin` 写入当前用户的 `~/.bashrc`，避免 `npm install -g` 已安装但新终端找不到命令。
 
-Linux 下 `gitnexus` 安装前会运行 `node20` 和 `npm-mirror` 标签检查，因此系统 apt 提供的低版本 Node.js 不会被误认为满足要求。默认安装命令带 `--ignore-scripts`，用于避免 npm install script 在内网环境中访问 GitHub。
+Linux 下 `gitnexus` 安装前会运行 `node20` 和 `npm-mirror` 标签检查，因此系统 apt 提供的低版本 Node.js 不会被误认为满足要求。`gitnexus` 默认按平台选择离线 npm 包：Windows、Linux x64、Linux arm64 分别在 `rsenvforge.toml` 的 `install_windows` / `install_linux` 中配置对应 URL。安装时会输出检测到的目标平台，例如 `windows`、`linux-x64` 或 `linux-arm64`。
 
 Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
 
@@ -304,6 +304,8 @@ export PATH="$HOME/.local/bin:$PATH"
 `RSENVFORGE_NODEJS_ARCHIVE_URL` 支持 `{version}`、`{arch}`、`{platform}`、`{package}` 四个变量。`{arch}` 会在 Linux 下自动替换为 `x64` 或 `arm64`，所以同一条模板可以覆盖 x64 和 arm64。压缩包后缀支持 `.tar.gz`、`.tgz` 和 `.tar.xz`。`export PATH="$HOME/.local/bin:$PATH"` 用于让当前安装进程和后续终端优先找到 rsenvforge 直装的 Node.js。
 
 如果只配置 `RSENVFORGE_NODEJS_MIRROR`，rsenvforge 会按默认规则拼接为 `${RSENVFORGE_NODEJS_MIRROR}/v{version}/{package}.tar.gz`。
+
+`gitnexus` 使用离线 npm 包安装。Linux 会根据 `uname -m` 自动区分 `x64` 和 `arm64`，Windows 使用 `install_windows`。如果你的内网包地址不同，只需要修改 `rsenvforge.toml` 中 `gitnexus` 工具的三个 URL：`gitnexus-windows-1.6.8.tgz`、`gitnexus-linux-x64-1.6.8.tgz`、`gitnexus-linux-arm64-1.6.8.tgz`。
 
 `preinstall` 支持全局和分级两种写法。全局写法是 `[preinstall.linux]` / `[preinstall.windows]`，分级写法是 `[preinstall.light.linux]`、`[preinstall.standard.linux]`、`[preinstall.full.linux]`，Windows 同理。
 

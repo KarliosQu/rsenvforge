@@ -158,7 +158,7 @@ source_file = "/etc/apt/sources.list.d/rsenvforge.sources"
 
 # 工具标签检查。只有在具体工具中显式填写 tags = ["名称"] 才会执行。
 [tag_checks.proxy]
-check_windows = "powershell -NoProfile -Command \"if ($env:http_proxy -or $env:https_proxy -or $env:HTTP_PROXY -or $env:HTTPS_PROXY) { exit 0 } else { exit 1 }\""
+check_windows = "if not \"%http_proxy%%https_proxy%%HTTP_PROXY%%HTTPS_PROXY%\"==\"\" (exit /b 0) else exit /b 1"
 check_linux = "sh -lc 'test -n \"$http_proxy$https_proxy$HTTP_PROXY$HTTPS_PROXY\"'"
 
 [tag_checks.github]
@@ -170,18 +170,18 @@ check_windows = "npm --version"
 check_linux = "npm --version"
 
 [tag_checks.node20]
-check_windows = "powershell -NoProfile -Command \"$version = node --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Write-Output $version; $major = [int]($version.TrimStart('v').Split('.')[0]); if ($major -ge 20) { exit 0 } else { exit 1 }\""
+check_windows = "node --version && node -e \"const major = Number(process.versions.node.split('.')[0]); process.exit(major >= 20 ? 0 : 1)\""
 check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; version=$(node --version) || exit $?; echo \"$version\"; major=${version#v}; major=${major%%.*}; test \"$major\" -ge 20"
 
 # 镜像标签不会自动绑定到工具。需要时请在对应 [[tools]] 中显式填写，
 # 例如：tags = ["cargo-mirror"]。
 
 [tag_checks.rustup-mirror]
-check_windows = "powershell -NoProfile -Command \"rustup --version; if (-not $env:RUSTUP_DIST_SERVER) { exit 1 }; $url = $env:RUSTUP_DIST_SERVER.TrimEnd('/') + '/dist/channel-rust-stable.toml'; curl.exe -fsS --connect-timeout 10 $url > $null; exit $LASTEXITCODE\""
+check_windows = "rustup --version && if \"%RUSTUP_DIST_SERVER%\"==\"\" exit /b 1 && curl.exe -fsS --connect-timeout 10 \"%RUSTUP_DIST_SERVER%/dist/channel-rust-stable.toml\" >NUL"
 check_linux = "if [ -f \"$HOME/.bashrc\" ]; then . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; fi; rustup --version || exit $?; test -n \"$RUSTUP_DIST_SERVER\" && curl -fsS --connect-timeout 10 \"${RUSTUP_DIST_SERVER%/}/dist/channel-rust-stable.toml\" >/dev/null"
 
 [tag_checks.cargo-mirror]
-check_windows = "powershell -NoProfile -Command \"cargo --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $home = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }; $config = Join-Path $home 'config.toml'; if (!(Test-Path $config)) { $config = Join-Path $home 'config' }; if (!(Test-Path $config) -or -not (Select-String -Path $config -Pattern 'registries|source' -Quiet)) { exit 1 }; cargo search serde --limit 1; exit $LASTEXITCODE\""
+check_windows = "cargo --version && cargo search serde --limit 1"
 check_linux = "cargo --version || exit $?; config=\"${CARGO_HOME:-$HOME/.cargo}/config.toml\"; if [ ! -f \"$config\" ]; then config=\"${CARGO_HOME:-$HOME/.cargo}/config\"; fi; test -s \"$config\" && grep -Eq 'registries|source' \"$config\" && cargo search serde --limit 1"
 
 [tag_checks.cargo-install]
@@ -193,7 +193,7 @@ check_windows = "0"
 check_linux = "command -v apt-get >/dev/null || exit 1; tmp=$(mktemp -d) || exit 1; mkdir -p \"$tmp/partial\"; apt-get -o \"Dir::State::lists=$tmp\" update; status=$?; rm -rf \"$tmp\"; exit $status"
 
 [tag_checks.npm-mirror]
-check_windows = "powershell -NoProfile -Command \"npm --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $registry = (npm config get registry).Trim(); if ([string]::IsNullOrWhiteSpace($registry) -or $registry -eq 'null') { exit 1 }; npm ping --registry $registry; exit $LASTEXITCODE\""
+check_windows = "npm --version && npm config get registry && npm ping"
 check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; npm --version || exit $?; registry=$(npm config get registry); test -n \"$registry\" && test \"$registry\" != \"null\" && npm ping --registry \"$registry\""
 
 # 标签配置示例：删除每行开头的 # 后，再按实际工具名称和安装命令填写。
@@ -214,7 +214,7 @@ install_linux = "0"
 
 [[tools]]
 name = "msvc"
-check_windows = "powershell -NoProfile -Command \"$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'; $cl = Get-Command cl.exe -ErrorAction SilentlyContinue; if ($cl) { cl.exe 2>&1 | Select-Object -First 1; exit 0 }; if (Test-Path $vswhere) { $version = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion; if ($LASTEXITCODE -eq 0 -and $version) { Write-Output ('Visual Studio C++ Build Tools ' + $version); exit 0 } }; exit 1\""
+check_windows = "where cl || \"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion"
 check_linux = "0"
 install_windows = "winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override \"--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\""
 install_linux = "0"
@@ -348,7 +348,7 @@ install_linux = "cargo install cargo-semver-checks"
 
 [[tools]]
 name = "nodejs"
-check_windows = "powershell -NoProfile -Command \"$version = node --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; npm --version; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Write-Output $version; $major = [int]($version.TrimStart('v').Split('.')[0]); if ($major -ge 20) { exit 0 } else { exit 1 }\""
+check_windows = "node --version && npm --version && node -e \"const major = Number(process.versions.node.split('.')[0]); process.exit(major >= 20 ? 0 : 1)\""
 check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; version=$(node --version) || exit $?; npm --version || exit $?; echo \"$version\"; major=${version#v}; major=${major%%.*}; test \"$major\" -ge 20"
 install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
 install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; version=\"${RSENVFORGE_NODEJS_VERSION:-20.17.0}\"; case \"$(uname -m)\" in x86_64|amd64) node_arch=x64 ;; aarch64|arm64) node_arch=arm64 ;; *) echo \"不支持的 Node.js 架构：$(uname -m)\"; exit 1 ;; esac; platform=linux; package=\"node-v${version}-${platform}-${node_arch}\"; archive_url=\"${RSENVFORGE_NODEJS_ARCHIVE_URL:-}\"; if [ -z \"$archive_url\" ]; then mirror=\"${RSENVFORGE_NODEJS_MIRROR:-}\"; test -n \"$mirror\" || { echo '缺少 RSENVFORGE_NODEJS_ARCHIVE_URL 或 RSENVFORGE_NODEJS_MIRROR'; exit 1; }; archive_url=\"${mirror%/}/v{version}/{package}.tar.gz\"; fi; archive_url=\"${archive_url//\\{version\\}/$version}\"; archive_url=\"${archive_url//\\{arch\\}/$node_arch}\"; archive_url=\"${archive_url//\\{platform\\}/$platform}\"; archive_url=\"${archive_url//\\{package\\}/$package}\"; case \"$archive_url\" in *.tar.xz) tar_args=-xJ ;; *.tar.gz|*.tgz) tar_args=-xz ;; *) echo \"不支持的 Node.js 压缩包格式：$archive_url\"; exit 1 ;; esac; install_dir=\"$HOME/.local/opt/$package\"; mkdir -p \"$install_dir\" \"$HOME/.local/bin\" && curl -fsSL \"$archive_url\" | tar \"$tar_args\" --strip-components=1 -C \"$install_dir\" || exit $?; ln -sf \"$install_dir/bin/node\" \"$HOME/.local/bin/node\"; ln -sf \"$install_dir/bin/npm\" \"$HOME/.local/bin/npm\"; ln -sf \"$install_dir/bin/npx\" \"$HOME/.local/bin/npx\"; touch \"$HOME/.bashrc\"; grep -q '\\$HOME/.local/bin' \"$HOME/.bashrc\" || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"\\n' >> \"$HOME/.bashrc\"; export PATH=\"$HOME/.local/bin:$PATH\"; node_global_bin=\"$(npm prefix -g)/bin\"; grep -q \"$node_global_bin\" \"$HOME/.bashrc\" || printf '\\nexport PATH=\"%s:$PATH\"\\n' \"$node_global_bin\" >> \"$HOME/.bashrc\"; export PATH=\"$node_global_bin:$PATH\"; node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
@@ -356,10 +356,10 @@ install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; v
 [[tools]]
 name = "gitnexus"
 tags = ["node20", "npm-mirror"]
-check_windows = "gitnexus --version"
-check_linux = "gitnexus --version"
-install_windows = "npm install -g gitnexus --ignore-scripts"
-install_linux = "npm install -g gitnexus --ignore-scripts"
+check_windows = "echo gitnexus 平台：windows && gitnexus --version"
+check_linux = "case \"$(uname -m)\" in x86_64|amd64) gitnexus_platform=linux-x64 ;; aarch64|arm64) gitnexus_platform=linux-arm64 ;; *) echo \"gitnexus 不支持当前 Linux 架构：$(uname -m)\"; exit 1 ;; esac; echo \"gitnexus 平台：$gitnexus_platform\"; gitnexus --version"
+install_windows = "echo gitnexus 平台：windows && npm install -g \"http://7.222.7.221/package/gitnexus-windows-1.6.8.tgz\""
+install_linux = ". \"$HOME/.bashrc\" >/dev/null 2>&1 || true; case \"$(uname -m)\" in x86_64|amd64) gitnexus_platform=linux-x64; package_url=\"http://7.222.7.221/package/gitnexus-linux-x64-1.6.8.tgz\" ;; aarch64|arm64) gitnexus_platform=linux-arm64; package_url=\"http://7.222.7.221/package/gitnexus-linux-arm64-1.6.8.tgz\" ;; *) echo \"gitnexus 不支持当前 Linux 架构：$(uname -m)\"; exit 1 ;; esac; echo \"gitnexus 平台：$gitnexus_platform\"; npm install -g \"$package_url\""
 
 [[tools]]
 name = "python"

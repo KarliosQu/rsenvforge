@@ -430,7 +430,22 @@ mod tests {
             .install_linux
             .as_deref()
             .unwrap()
-            .contains("--ignore-scripts"));
+            .contains("gitnexus_platform=linux-x64"));
+        assert!(gitnexus
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("gitnexus_platform=linux-arm64"));
+        assert!(gitnexus
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("gitnexus-linux-x64-1.6.8.tgz"));
+        assert!(gitnexus
+            .install_linux
+            .as_deref()
+            .unwrap()
+            .contains("gitnexus-linux-arm64-1.6.8.tgz"));
         assert!(!gitnexus
             .install_linux
             .as_deref()
@@ -440,7 +455,12 @@ mod tests {
             .install_windows
             .as_deref()
             .unwrap()
-            .contains("--ignore-scripts"));
+            .contains("gitnexus-windows-1.6.8.tgz"));
+        assert!(gitnexus
+            .install_windows
+            .as_deref()
+            .unwrap()
+            .contains("gitnexus 平台：windows"));
         assert!(!gitnexus
             .install_windows
             .as_deref()
