@@ -345,7 +345,7 @@ impl Default for InstallOptions {
             config_path: None,
             force: false,
             norustup: false,
-            status_bar: false,
+            status_bar: true,
         }
     }
 }

@@ -286,9 +286,6 @@ impl StatusBar {
         mode: ShellDisplayMode,
     ) -> Self {
         let active = matches!(mode, ShellDisplayMode::StatusBar) && io::stdout().is_terminal();
-        if matches!(mode, ShellDisplayMode::StatusBar) && !active {
-            println!("状态栏模式仅在交互式终端启用，当前使用普通文本输出。");
-        }
         Self {
             label: label.to_string(),
             step,

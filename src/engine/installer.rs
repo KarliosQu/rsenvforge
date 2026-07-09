@@ -1310,7 +1310,7 @@ fn run_preinstall_commands(
 }
 
 fn display_mode(options: &InstallOptions) -> ShellDisplayMode {
-    if options.status_bar {
+    if options.status_bar && io::stdout().is_terminal() {
         ShellDisplayMode::StatusBar
     } else {
         ShellDisplayMode::Plain

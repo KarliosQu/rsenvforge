@@ -32,7 +32,7 @@ rsenvforge install
 
 ```text
 rsenvforge init [--force]
-rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup] [--status-bar]
+rsenvforge install [light|standard|full] [--config <path>] [--force] [--norustup] [--no-status-bar]
 rsenvforge install-crate <source> [--norustup] [--force] [--bin <name>]
 rsenvforge update [--force] [--norustup]
 rsenvforge remove <name> [--kind <crate>] [--force]
@@ -104,7 +104,7 @@ Step 4/4：安装工具 gitnexus
 ...
 ```
 
-如果希望在交互式终端底部显示常驻安装状态，可以为 `install` 添加 `--status-bar`。该模式只在 TTY 终端中启用；在 CI、重定向输出、测试等非交互环境中会自动回退为普通文本输出，不改变默认安装效果。
+交互式终端默认会在底部显示常驻安装状态栏；在 CI、重定向输出、测试等非交互环境中会自动使用普通文本输出。如果不希望使用状态栏，可以添加 `--no-status-bar`。
 
 ## 代理检查
 
