@@ -61,7 +61,7 @@ rsenvforge init --force
 
 ## 安装流程
 
-`install` 会先输出代理检查，再输出工具检测结果。已安装工具会显示版本，未安装工具会列为缺失项。不支持当前平台的工具会直接提示，例如：
+`install` 会先输出工具检测结果。已安装工具会显示版本，未安装工具会列为缺失项。不支持当前平台的工具会直接提示，例如：
 
 ```text
 valgrind：不支持windows环境
@@ -108,7 +108,7 @@ Step 4/4：安装工具 gitnexus
 
 ## 代理检查
 
-`doctor` 和 `install` 都会输出当前代理配置，便于排查 `cargo install`、Git 下载和系统包安装时的网络问题。
+`doctor` 会输出当前代理配置，便于排查 `cargo install`、Git 下载和系统包安装时的网络问题。`install` 不再在界面中显示代理检查结果。
 
 检查内容：
 

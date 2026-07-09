@@ -19,12 +19,6 @@ pub fn proxy_report() -> Vec<String> {
     lines
 }
 
-pub fn print_proxy_report() {
-    for line in proxy_report() {
-        println!("{line}");
-    }
-}
-
 fn environment_proxy_lines() -> Vec<String> {
     vec![
         format!(

@@ -26,10 +26,10 @@ use super::models::{
 };
 use super::paths::{app_home, managed_bin_dir, registry_path};
 use super::process::{
-    command_status_text, run_shell_capture, run_shell_labeled, run_shell_labeled_display,
-    run_shell_labeled_quiet_display, ShellDisplayMode, ShellRunStatus,
+    command_status_text, run_shell_capture, run_shell_labeled, run_shell_labeled_display_step,
+    run_shell_labeled_quiet_display_step, ShellDisplayMode, ShellRunStatus, ShellStep,
 };
-use super::proxy::{print_proxy_report, proxy_report};
+use super::proxy::proxy_report;
 use super::registry::{append_registry, read_registry, write_registry};
 use super::util::{
     exe_name, first_line, fnv1a, home_dir, join_names, looks_like_git, now_secs, shell_quote,
@@ -40,7 +40,6 @@ pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeE
     let loaded = load_config(options.config_path.as_deref())?;
     let config = resolve_config_sources(loaded.config, loaded.path.as_deref());
     apply_install_start_environment(&config)?;
-    print_proxy_report();
     let preview = preview_install(&config, options.profile)?;
     print_preview(&preview);
 
@@ -1051,7 +1050,14 @@ fn process_profile_tools(
     for tool in tools {
         if missing_names.contains(tool.name.as_str()) {
             progress.next("安装工具", &tool.name);
-            install_tool(config, &tool, &mut passed_tags, &mut session, display_mode)?;
+            install_tool(
+                config,
+                &tool,
+                &mut passed_tags,
+                &mut session,
+                display_mode,
+                progress.step(),
+            )?;
             continue;
         }
 
@@ -1060,7 +1066,7 @@ fn process_profile_tools(
         }
 
         if confirm_run_installed_tool_post(&tool.name)? {
-            run_tool_post_install(&tool, &session, display_mode)?;
+            run_tool_post_install(&tool, &session, display_mode, progress.step())?;
         } else {
             println!("已跳过工具安装后命令：{}", tool.name);
         }
@@ -1074,6 +1080,7 @@ fn install_tool(
     passed_tags: &mut BTreeSet<String>,
     session: &mut InstallSession,
     display_mode: ShellDisplayMode,
+    step: Option<ShellStep>,
 ) -> Result<(), ForgeError> {
     let Some(command) = install_command_for_tool(tool, session) else {
         return Ok(());
@@ -1084,7 +1091,7 @@ fn install_tool(
     }
     println!("开始安装工具：{}", tool.name);
     let command = command_for_install_session(&command, session);
-    match run_shell_labeled_display(&tool.name, &command, display_mode) {
+    match run_shell_labeled_display_step(&tool.name, &command, display_mode, step) {
         Ok(ShellRunStatus::Completed) => {}
         Ok(ShellRunStatus::Skipped) => {
             println!("已跳过工具：{}", tool.name);
@@ -1112,7 +1119,7 @@ fn install_tool(
         refresh_node_process_environment();
         println!("Node.js 环境已刷新到当前安装进程。");
     }
-    run_tool_post_install(tool, session, display_mode)?;
+    run_tool_post_install(tool, session, display_mode, step)?;
     println!("工具 {} 安装完成。", tool.name);
     Ok(())
 }
@@ -1196,16 +1203,18 @@ fn run_tool_post_install(
     tool: &ToolDef,
     session: &InstallSession,
     display_mode: ShellDisplayMode,
+    step: Option<ShellStep>,
 ) -> Result<(), ForgeError> {
     let Some(post_command) = tool.post_install_command() else {
         return Ok(());
     };
     println!("开始运行工具安装后命令：{}", tool.name);
     let post_command = command_for_install_session(post_command, session);
-    match run_shell_labeled_display(
+    match run_shell_labeled_display_step(
         &format!("{} 安装后命令", tool.name),
         &post_command,
         display_mode,
+        step,
     ) {
         Ok(ShellRunStatus::Completed) => {}
         Ok(ShellRunStatus::Skipped) => {
@@ -1263,6 +1272,13 @@ impl InstallProgress {
         self.current += 1;
         println!("Step {}/{}：{} {}", self.current, self.total, action, name);
     }
+
+    fn step(&self) -> Option<ShellStep> {
+        (self.total > 0).then_some(ShellStep {
+            current: self.current,
+            total: self.total,
+        })
+    }
 }
 
 fn run_preinstall_commands(
@@ -1280,8 +1296,12 @@ fn run_preinstall_commands(
 
     progress.next("运行", "安装前置命令");
     for command in commands {
-        if run_shell_labeled_quiet_display("安装前置命令", &command, display_mode)?
-            == ShellRunStatus::Skipped
+        if run_shell_labeled_quiet_display_step(
+            "安装前置命令",
+            &command,
+            display_mode,
+            progress.step(),
+        )? == ShellRunStatus::Skipped
         {
             println!("已跳过安装前置命令。");
         }
