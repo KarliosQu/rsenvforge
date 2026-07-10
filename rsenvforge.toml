@@ -3,10 +3,27 @@
 # 安装等级会按 light -> standard -> full 累积。
 # standard 会包含 light；full 会包含 light + standard + full。
 
-# [environment] 是实际会写入本机环境文件的配置区。
-# cargo_config 会写入 Cargo config.toml；bashrc 会追加到 Linux ~/.bashrc；
-# npmrc 会追加到用户级 .npmrc。下面的镜像行默认保持注释，不参与安装。
-[environment]
+# [environment.windows] 与 [environment.linux] 会分别写入对应平台的环境配置。
+# cargo_config 会写入 Cargo config.toml；npmrc 会追加到用户级 .npmrc。
+# Windows variables 会写入当前进程和当前用户环境变量；Linux bashrc 会追加到 ~/.bashrc。
+[environment.windows]
+cargo_config = [
+  "[source.crates-io]",
+  "replace-with = \"rsproxy\"",
+  "[source.rsproxy]",
+  "registry = \"sparse+https://rsproxy.cn/index/\"",
+  "[net]",
+  "git-fetch-with-cli = true",
+]
+variables = [
+  "RUSTUP_DIST_SERVER=https://rsproxy.cn",
+  "RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup",
+]
+npmrc = [
+  "registry=https://registry.npmmirror.com/",
+]
+
+[environment.linux]
 cargo_config = [
   "[source.crates-io]",
   "replace-with = \"rsproxy\"",
@@ -207,14 +224,14 @@ check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; npm --version || exit $?;
 
 [[tools]]
 name = "gnu"
-check_windows = "gcc --version"
+check_windows = "gcc -dumpmachine | findstr /I /R \"x86_64.*mingw mingw.*x86_64\" >NUL"
 check_linux = "0"
 install_windows = "winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT"
 install_linux = "0"
 
 [[tools]]
 name = "msvc"
-check_windows = "where cl || \"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion"
+check_windows = "where cl >NUL 2>NUL && where link >NUL 2>NUL"
 check_linux = "0"
 install_windows = "winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override \"--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\""
 install_linux = "0"

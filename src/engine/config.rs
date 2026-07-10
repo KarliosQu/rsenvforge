@@ -213,7 +213,7 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
             continue;
         }
 
-        if line == "[environment]" {
+        if line == "[environment]" || (line.starts_with("[environment.") && line.ends_with(']')) {
             flush_raw(
                 &mut current_item,
                 &mut current_tool,
@@ -222,7 +222,20 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                 &mut tools,
                 &mut skills,
             )?;
-            section = Section::Environment;
+            section = if line == "[environment]" {
+                Section::Environment(EnvironmentPlatform::Legacy)
+            } else {
+                let platform = line
+                    .trim_start_matches("[environment.")
+                    .trim_end_matches(']')
+                    .trim();
+                Section::Environment(EnvironmentPlatform::parse(platform).ok_or_else(|| {
+                    ForgeError::Parse(format!(
+                        "第 {} 行：environment 只支持 windows/linux",
+                        line_number + 1
+                    ))
+                })?)
+            };
             continue;
         }
 
@@ -267,17 +280,9 @@ pub fn parse_config(input: &str) -> Result<InstallConfig, ForgeError> {
                     )))
                 }
             },
-            Section::Environment => match key {
-                "cargo_config" => environment.cargo_config = parse_string_array(value)?,
-                "bashrc" => environment.bashrc = parse_string_array(value)?,
-                "npmrc" => environment.npmrc = parse_string_array(value)?,
-                _ => {
-                    return Err(ForgeError::Parse(format!(
-                        "第 {} 行：environment 只支持 cargo_config/bashrc/npmrc",
-                        line_number + 1
-                    )))
-                }
-            },
+            Section::Environment(platform) => {
+                parse_environment_field(&mut environment, *platform, key, value, line_number + 1)?;
+            }
             Section::AptMirror => match key {
                 "uri" => apt_mirror.uri = Some(parse_string(value)?),
                 "lines" => apt_mirror.lines = parse_string_array(value)?,
@@ -429,6 +434,54 @@ fn merge_with_builtin(config: InstallConfig) -> InstallConfig {
     extend_or_replace_skills(&mut builtin.skills, config.skills);
     builtin.items = config.items;
     builtin
+}
+
+fn parse_environment_field(
+    environment: &mut EnvironmentDef,
+    platform: EnvironmentPlatform,
+    key: &str,
+    value: &str,
+    line_number: usize,
+) -> Result<(), ForgeError> {
+    let values = parse_string_array(value)?;
+    match platform {
+        EnvironmentPlatform::Legacy => match key {
+            "cargo_config" => {
+                environment.windows.cargo_config = values.clone();
+                environment.linux.cargo_config = values;
+            }
+            "npmrc" => {
+                environment.windows.npmrc = values.clone();
+                environment.linux.npmrc = values;
+            }
+            "bashrc" => environment.linux.bashrc = values,
+            "variables" => {
+                environment.windows.variables = values.clone();
+                environment.linux.variables = values;
+            }
+            _ => return environment_field_error(line_number),
+        },
+        EnvironmentPlatform::Windows => match key {
+            "cargo_config" => environment.windows.cargo_config = values,
+            "npmrc" => environment.windows.npmrc = values,
+            "variables" => environment.windows.variables = values,
+            _ => return environment_field_error(line_number),
+        },
+        EnvironmentPlatform::Linux => match key {
+            "cargo_config" => environment.linux.cargo_config = values,
+            "npmrc" => environment.linux.npmrc = values,
+            "bashrc" => environment.linux.bashrc = values,
+            "variables" => environment.linux.variables = values,
+            _ => return environment_field_error(line_number),
+        },
+    }
+    Ok(())
+}
+
+fn environment_field_error(line_number: usize) -> Result<(), ForgeError> {
+    Err(ForgeError::Parse(format!(
+        "第 {line_number} 行：environment 只支持 cargo_config/npmrc/variables，Linux 额外支持 bashrc"
+    )))
 }
 
 fn parse_preinstall_section(scope: &str, line_number: usize) -> Result<Section, ForgeError> {
@@ -777,13 +830,30 @@ enum Section {
         profile: Option<String>,
         platform: PreinstallPlatform,
     },
-    Environment,
+    Environment(EnvironmentPlatform),
     AptMirror,
     AptMirrorRule(usize),
     TagCheck(String),
     Item,
     Tool,
     Skill,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EnvironmentPlatform {
+    Legacy,
+    Windows,
+    Linux,
+}
+
+impl EnvironmentPlatform {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "windows" => Some(Self::Windows),
+            "linux" => Some(Self::Linux),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Default)]

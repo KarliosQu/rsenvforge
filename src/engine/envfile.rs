@@ -1,54 +1,28 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "windows")]
+use std::process::Command;
 
 use super::error::ForgeError;
-use super::models::InstallConfig;
+use super::models::{InstallConfig, PlatformEnvironmentDef};
 use super::util::home_dir;
 
 pub(crate) fn apply_install_start_environment(config: &InstallConfig) -> Result<(), ForgeError> {
-    write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
-    append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
-    if cfg!(target_os = "linux") {
-        apply_export_lines_to_process(&config.environment.bashrc);
-        append_lines_if_missing(
-            "bashrc",
-            &home_dir().join(".bashrc"),
-            &config.environment.bashrc,
-        )?;
-    }
-    Ok(())
+    apply_configured_environment(config)
 }
 
 pub(crate) fn apply_after_rust_install_environment(
     config: &InstallConfig,
 ) -> Result<(), ForgeError> {
-    write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
-    append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
-    if cfg!(target_os = "linux") {
-        apply_export_lines_to_process(&config.environment.bashrc);
-        append_lines_if_missing(
-            "bashrc",
-            &home_dir().join(".bashrc"),
-            &config.environment.bashrc,
-        )?;
-    }
+    apply_configured_environment(config)?;
     refresh_rust_process_environment();
     Ok(())
 }
 
 pub(crate) fn refresh_install_finish_environment(config: &InstallConfig) -> Result<(), ForgeError> {
     println!("正在刷新安装后的终端环境配置...");
-    write_cargo_config_if_empty(&cargo_config_path(), &config.environment.cargo_config)?;
-    append_lines_if_missing("npmrc", &npmrc_path(), &config.environment.npmrc)?;
-    if cfg!(target_os = "linux") {
-        apply_export_lines_to_process(&config.environment.bashrc);
-        append_lines_if_missing(
-            "bashrc",
-            &home_dir().join(".bashrc"),
-            &config.environment.bashrc,
-        )?;
-    }
+    apply_configured_environment(config)?;
     refresh_rust_process_environment();
     refresh_node_process_environment();
     if cfg!(target_os = "linux") {
@@ -60,6 +34,100 @@ pub(crate) fn refresh_install_finish_environment(config: &InstallConfig) -> Resu
         println!("已刷新当前安装进程环境。");
         println!("如果当前终端仍找不到新安装命令，请重新打开 PowerShell/CMD 后再试。");
     }
+    Ok(())
+}
+
+fn apply_configured_environment(config: &InstallConfig) -> Result<(), ForgeError> {
+    let environment = current_platform_environment(config);
+    write_cargo_config_if_empty(&cargo_config_path(), &environment.cargo_config)?;
+    append_lines_if_missing("npmrc", &npmrc_path(), &environment.npmrc)?;
+    if cfg!(target_os = "windows") {
+        apply_windows_variables(&environment.variables)?;
+    } else {
+        let bashrc_lines = linux_bashrc_lines(environment);
+        apply_export_lines_to_process(&bashrc_lines);
+        append_lines_if_missing("bashrc", &home_dir().join(".bashrc"), &bashrc_lines)?;
+    }
+    Ok(())
+}
+
+fn current_platform_environment(config: &InstallConfig) -> &PlatformEnvironmentDef {
+    if cfg!(target_os = "windows") {
+        &config.environment.windows
+    } else {
+        &config.environment.linux
+    }
+}
+
+fn linux_bashrc_lines(environment: &PlatformEnvironmentDef) -> Vec<String> {
+    let mut lines = environment
+        .variables
+        .iter()
+        .map(|line| format!("export {line}"))
+        .collect::<Vec<_>>();
+    lines.extend(environment.bashrc.clone());
+    lines
+}
+
+fn apply_windows_variables(lines: &[String]) -> Result<(), ForgeError> {
+    for line in lines {
+        let (name, value) = parse_variable_line(line)?;
+        env::set_var(&name, &value);
+        persist_windows_user_variable(&name, &value)?;
+    }
+    Ok(())
+}
+
+fn parse_variable_line(line: &str) -> Result<(String, String), ForgeError> {
+    let (name, value) = line
+        .trim()
+        .split_once('=')
+        .ok_or_else(|| ForgeError::Config(format!("环境变量应写为 KEY=value：{line}")))?;
+    let name = name.trim();
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric())
+        || name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_digit())
+    {
+        return Err(ForgeError::Config(format!("无效的环境变量名称：{name}")));
+    }
+    Ok((name.to_string(), value.trim().to_string()))
+}
+
+#[cfg(target_os = "windows")]
+fn persist_windows_user_variable(name: &str, value: &str) -> Result<(), ForgeError> {
+    let output = Command::new("reg.exe")
+        .args([
+            "add",
+            r"HKCU\Environment",
+            "/v",
+            name,
+            "/t",
+            "REG_SZ",
+            "/d",
+            value,
+            "/f",
+        ])
+        .output()
+        .map_err(|error| {
+            ForgeError::Command(format!("无法写入 Windows 用户环境变量 {name}：{error}"))
+        })?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(ForgeError::Command(format!(
+            "无法写入 Windows 用户环境变量 {name}：{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn persist_windows_user_variable(_: &str, _: &str) -> Result<(), ForgeError> {
     Ok(())
 }
 
@@ -342,8 +410,9 @@ fn write_text(path: &Path, contents: &str) -> Result<(), ForgeError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_lines_if_missing, apply_export_lines_to_process, refresh_node_process_environment,
-        refresh_rust_process_environment, write_cargo_config_if_empty,
+        append_lines_if_missing, apply_export_lines_to_process, parse_variable_line,
+        refresh_node_process_environment, refresh_rust_process_environment,
+        write_cargo_config_if_empty,
     };
     use std::sync::Mutex;
     use std::{env, ffi::OsString, fs};
@@ -471,6 +540,19 @@ mod tests {
         restore_env("USERPROFILE", old_userprofile);
         restore_env("HOME", old_home);
         restore_env("PATH", old_path);
+    }
+
+    #[test]
+    fn parses_windows_environment_variables() {
+        assert_eq!(
+            parse_variable_line("RUSTUP_DIST_SERVER=https://rustup.internal.example").unwrap(),
+            (
+                "RUSTUP_DIST_SERVER".to_string(),
+                "https://rustup.internal.example".to_string()
+            )
+        );
+        assert!(parse_variable_line("1INVALID=value").is_err());
+        assert!(parse_variable_line("MISSING_VALUE").is_err());
     }
 
     #[test]

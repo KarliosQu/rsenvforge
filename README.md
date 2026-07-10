@@ -231,7 +231,7 @@ Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` �
 
 Linux 下 `gitnexus` 安装前会运行 `node20` 和 `npm-mirror` 标签检查，因此系统 apt 提供的低版本 Node.js 不会被误认为满足要求。`gitnexus` 默认按平台选择离线 npm 包：Windows、Linux x64、Linux arm64 分别在 `rsenvforge.toml` 的 `install_windows` / `install_linux` 中配置对应 URL。安装时会输出检测到的目标平台，例如 `windows`、`linux-x64` 或 `linux-arm64`。
 
-Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
+Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。MSVC 检测会同时确认 `cl/link` 是否已在终端可用，或验证 `vcvars64.bat` 是否存在；后一种情况会在 rsenvforge 执行 Rust/Cargo 命令时自动加载 Visual Studio C++ 开发环境。GNU 检测会验证 GCC 目标为 x64 MinGW，避免把 MSYS2、Cygwin 或其他 GCC 误判为 Rust GNU 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
 
 ### full
 
@@ -251,10 +251,23 @@ Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。
 
 ## 配置格式
 
-配置由 `environment`、`preinstall`、`profiles`、`tag_checks`、`tools` 和 `items` 组成。默认配置把环境变量和安装前置命令放在文件最前面，便于先配置内网镜像和基础环境：
+配置由 `environment.windows`、`environment.linux`、`preinstall`、`profiles`、`tag_checks`、`tools` 和 `items` 组成。默认配置把平台环境变量和安装前置命令放在文件最前面，便于先配置内网镜像和基础环境：
 
 ```toml
-[environment]
+[environment.windows]
+cargo_config = [
+  "[net]",
+  "git-fetch-with-cli = true",
+]
+variables = [
+  "RUSTUP_DIST_SERVER=https://rustup.internal.example",
+  "RUSTUP_UPDATE_ROOT=https://rustup.internal.example/rustup",
+]
+npmrc = [
+  "registry=https://mirror.com/npm/",
+]
+
+[environment.linux]
 cargo_config = [
   "[net]",
   "git-fetch-with-cli = true",
@@ -263,9 +276,6 @@ bashrc = [
   "export RUSTUP_DIST_SERVER=https://rustup.internal.example",
   "export PATH=\"$HOME/.local/bin:$PATH\"",
   ". \"$HOME/.cargo/env\"",
-]
-npmrc = [
-  "registry=https://mirror.com/npm/",
 ]
 
 [preinstall.standard.linux]
@@ -317,17 +327,18 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 
 ## 环境文件
 
-`[environment]` 用于声明安装时要写入的本机环境文件内容：
+`[environment.windows]` 与 `[environment.linux]` 用于声明安装时要写入的本机环境内容。两个区块互不影响，程序只处理当前平台的区块：
 
 | 字段 | 说明 |
 | --- | --- |
-| `cargo_config` | 写入 `$CARGO_HOME/config.toml`；未设置 `CARGO_HOME` 时写入 `~/.cargo/config.toml` |
-| `bashrc` | Linux 下追加到 `~/.bashrc`；其中 `export KEY=value` 也会在本次安装进程中立即生效 |
-| `npmrc` | 追加写入用户级 `.npmrc`，用于 npm registry、strict-ssl 等配置 |
+| `cargo_config` | 写入当前平台的 `$CARGO_HOME/config.toml`；未设置 `CARGO_HOME` 时写入用户目录 `.cargo/config.toml` |
+| `npmrc` | 追加写入当前用户的 `.npmrc`，用于 npm registry、strict-ssl 等配置 |
+| `variables` | `KEY=value` 列表。Windows 下写入当前安装进程和 `HKCU\Environment`；Linux 下会转为 `export KEY=value` 并追加至 `~/.bashrc` |
+| `bashrc` | 仅 Linux 可用，追加到 `~/.bashrc`；其中 `export KEY=value` 也会在本次安装进程中立即生效 |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 中缺失的行追加到 `~/.bashrc`，并把其中的 `export KEY=value` 注入当前 rsenvforge 安装进程。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入，并刷新 rsenvforge 当前安装进程的 `PATH`、`CARGO_HOME` 与 `RUSTUP_HOME`，让后续安装命令可以直接找到 `cargo` 和 `rustup`。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 与 `variables` 中的缺失内容写入 `~/.bashrc`；Windows 下会将 `variables` 写入当前安装进程和当前用户环境变量。这样配置的 `RUSTUP_DIST_SERVER`、`RUSTUP_UPDATE_ROOT` 会在 Windows Rust toolchain 安装前生效。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入，并刷新 rsenvforge 当前安装进程的 `PATH`、`CARGO_HOME` 与 `RUSTUP_HOME`，让后续安装命令可以直接找到 `cargo` 和 `rustup`。
 
-已经打开的父终端环境无法被子进程反向修改。如果 `rsenvforge install` 结束后，当前终端仍找不到 `cargo` 或 `rustup`，请执行 `source ~/.bashrc`、`. "$HOME/.cargo/env"`，或重新打开终端。
+已经打开的父终端环境无法被子进程反向修改。Linux 下如果 `rsenvforge install` 结束后当前终端仍找不到 `cargo` 或 `rustup`，请执行 `source ~/.bashrc`、`. "$HOME/.cargo/env"`，或重新打开终端；Windows 下请重新打开 PowerShell/CMD，使当前用户环境变量重新加载。
 
 Linux 下安装命令优先使用 `bash -lc` 执行，因此可以在 `preinstall` 中使用 `source ~/.bashrc` 让刚写入的环境变量对后续命令生效；如果系统没有 `bash`，会回退到 `sh -c`，此时应使用 `. ~/.bashrc`。
 

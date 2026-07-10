@@ -209,9 +209,16 @@ pub struct AptMirrorRuleDef {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EnvironmentDef {
+    pub windows: PlatformEnvironmentDef,
+    pub linux: PlatformEnvironmentDef,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlatformEnvironmentDef {
     pub cargo_config: Vec<String>,
     pub bashrc: Vec<String>,
     pub npmrc: Vec<String>,
+    pub variables: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

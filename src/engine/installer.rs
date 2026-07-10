@@ -424,7 +424,7 @@ impl WindowsRustBuildTool {
     fn check_command(self) -> &'static str {
         match self {
             Self::Msvc => WINDOWS_MSVC_CHECK_COMMAND,
-            Self::Gnu => "gcc --version",
+            Self::Gnu => WINDOWS_GNU_CHECK_COMMAND,
         }
     }
 
@@ -453,7 +453,10 @@ impl WindowsRustBuildToolStatus {
     }
 }
 
-const WINDOWS_MSVC_CHECK_COMMAND: &str = "where cl || \"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion";
+const WINDOWS_MSVC_CHECK_COMMAND: &str = "where cl >NUL 2>NUL && where link >NUL 2>NUL";
+const WINDOWS_MSVC_PATH_COMMAND: &str = "\"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath";
+const WINDOWS_GNU_CHECK_COMMAND: &str =
+    "gcc -dumpmachine | findstr /I /R \"x86_64.*mingw mingw.*x86_64\" >NUL";
 
 const WINDOWS_MSVC_INSTALL_COMMAND: &str = "winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override \"--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"";
 
@@ -499,6 +502,25 @@ fn check_windows_rust_build_tool(tool: &ToolDef) -> ToolStatus {
 }
 
 fn windows_rust_build_tool_status(kind: WindowsRustBuildTool) -> WindowsRustBuildToolStatus {
+    if kind == WindowsRustBuildTool::Msvc {
+        if let Ok(output) = run_shell_capture(WINDOWS_MSVC_CHECK_COMMAND) {
+            return WindowsRustBuildToolStatus {
+                kind,
+                installed: true,
+                version: Some(output),
+            };
+        }
+        if let Some(developer_command) = windows_msvc_developer_command() {
+            return WindowsRustBuildToolStatus {
+                kind,
+                installed: true,
+                version: Some(format!(
+                    "已找到 Visual Studio C++ 工具，将自动加载 {}",
+                    developer_command.display()
+                )),
+            };
+        }
+    }
     match run_shell_capture(kind.check_command()) {
         Ok(output) => WindowsRustBuildToolStatus {
             kind,
@@ -513,8 +535,25 @@ fn windows_rust_build_tool_status(kind: WindowsRustBuildTool) -> WindowsRustBuil
     }
 }
 
-fn windows_rust_toolchain_install_command(session: &InstallSession) -> String {
-    let selected = select_windows_rust_build_tool_for_rust(session);
+fn windows_msvc_developer_command() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let installation = run_shell_capture(WINDOWS_MSVC_PATH_COMMAND)
+        .ok()?
+        .lines()
+        .find(|line| !line.trim().is_empty())?
+        .trim()
+        .to_string();
+    let command = PathBuf::from(installation)
+        .join("VC")
+        .join("Auxiliary")
+        .join("Build")
+        .join("vcvars64.bat");
+    command.is_file().then_some(command)
+}
+
+fn windows_rust_toolchain_install_command(selected: SelectedWindowsRustBuildTool) -> String {
     let mut commands = Vec::new();
     if selected.needs_install {
         commands.push(selected.kind.install_command().to_string());
@@ -529,6 +568,7 @@ fn windows_rust_toolchain_install_command(session: &InstallSession) -> String {
     commands.join(" && ")
 }
 
+#[derive(Clone, Copy)]
 struct SelectedWindowsRustBuildTool {
     kind: WindowsRustBuildTool,
     needs_install: bool,
@@ -961,6 +1001,7 @@ fn apply_apt_mirror_for_install(
 #[derive(Default)]
 struct InstallSession {
     installed_tools: BTreeSet<String>,
+    windows_rust_build_tool: Option<WindowsRustBuildTool>,
 }
 
 impl InstallSession {
@@ -979,10 +1020,35 @@ impl InstallSession {
     fn installed_windows_rust_build_tool_this_run(&self, kind: WindowsRustBuildTool) -> bool {
         self.installed_tools.contains(kind.name())
     }
+
+    fn set_windows_rust_build_tool(&mut self, kind: WindowsRustBuildTool) {
+        self.windows_rust_build_tool = Some(kind);
+    }
 }
 
 fn command_for_install_session(command: &str, session: &InstallSession) -> String {
-    command_for_install_session_on_platform(command, session, cfg!(target_os = "linux"))
+    let command =
+        command_for_install_session_on_platform(command, session, cfg!(target_os = "linux"));
+    if cfg!(windows)
+        && session.windows_rust_build_tool == Some(WindowsRustBuildTool::Msvc)
+        && command_uses_rust_environment(&command)
+    {
+        return with_windows_msvc_environment(&command);
+    }
+    command
+}
+
+fn command_uses_rust_environment(command: &str) -> bool {
+    ["cargo", "rustc", "rustup"]
+        .iter()
+        .any(|token| command_uses_token(command, token))
+}
+
+fn with_windows_msvc_environment(command: &str) -> String {
+    let Some(developer_command) = windows_msvc_developer_command() else {
+        return command.to_string();
+    };
+    format!("call \"{}\" >NUL && {command}", developer_command.display())
 }
 
 fn command_for_install_session_on_platform(
@@ -1047,6 +1113,11 @@ fn process_profile_tools(
     let tools = tools_for_names(config, &profile_def.tools)?;
     let mut passed_tags = BTreeSet::new();
     let mut session = InstallSession::default();
+    if cfg!(windows) && installed_names.contains("rust-toolchain") {
+        if let Some(kind) = active_windows_rust_build_tool() {
+            session.set_windows_rust_build_tool(kind);
+        }
+    }
     for tool in tools {
         if missing_names.contains(tool.name.as_str()) {
             progress.next("安装工具", &tool.name);
@@ -1082,7 +1153,12 @@ fn install_tool(
     display_mode: ShellDisplayMode,
     step: Option<ShellStep>,
 ) -> Result<(), ForgeError> {
-    let Some(command) = install_command_for_tool(tool, session) else {
+    let selected_windows_rust_toolchain = if cfg!(windows) && is_rust_toolchain(&tool.name) {
+        Some(select_windows_rust_build_tool_for_rust(session))
+    } else {
+        None
+    };
+    let Some(command) = install_command_for_tool(tool, selected_windows_rust_toolchain) else {
         return Ok(());
     };
     if !run_tool_tag_checks(config, tool, passed_tags, session)? {
@@ -1090,7 +1166,13 @@ fn install_tool(
         return Ok(());
     }
     println!("开始安装工具：{}", tool.name);
-    let command = command_for_install_session(&command, session);
+    let command = if selected_windows_rust_toolchain
+        .is_some_and(|selected| selected.kind == WindowsRustBuildTool::Msvc)
+    {
+        with_windows_msvc_environment(&command)
+    } else {
+        command_for_install_session(&command, session)
+    };
     match run_shell_labeled_display_step(&tool.name, &command, display_mode, step) {
         Ok(ShellRunStatus::Completed) => {}
         Ok(ShellRunStatus::Skipped) => {
@@ -1110,10 +1192,17 @@ fn install_tool(
         }
     }
     session.mark_installed(&tool.name);
+    if let Some(selected) = selected_windows_rust_toolchain {
+        session.set_windows_rust_build_tool(selected.kind);
+    }
     if is_rust_toolchain(&tool.name) {
         apply_after_rust_install_environment(config)?;
         println!("Rust 环境已写入配置文件，并已刷新当前安装进程。");
-        println!("如果当前终端仍找不到 cargo/rustup，请执行 source ~/.bashrc 或重新打开终端。");
+        if cfg!(windows) {
+            println!("如果当前终端仍找不到 cargo/rustup，请重新打开 PowerShell/CMD 后再试。");
+        } else {
+            println!("如果当前终端仍找不到 cargo/rustup，请执行 source ~/.bashrc 或重新打开终端。");
+        }
     }
     if is_node_environment_tool(&tool.name) {
         refresh_node_process_environment();
@@ -1124,11 +1213,28 @@ fn install_tool(
     Ok(())
 }
 
-fn install_command_for_tool(tool: &ToolDef, session: &InstallSession) -> Option<String> {
-    if cfg!(windows) && is_rust_toolchain(&tool.name) {
-        return Some(windows_rust_toolchain_install_command(session));
+fn install_command_for_tool(
+    tool: &ToolDef,
+    selected_windows_rust_toolchain: Option<SelectedWindowsRustBuildTool>,
+) -> Option<String> {
+    if let Some(selected) = selected_windows_rust_toolchain {
+        return Some(windows_rust_toolchain_install_command(selected));
     }
     tool.install_command().map(ToOwned::to_owned)
+}
+
+fn active_windows_rust_build_tool() -> Option<WindowsRustBuildTool> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let output = run_shell_capture("rustup show active-toolchain").ok()?;
+    if output.contains("windows-msvc") {
+        Some(WindowsRustBuildTool::Msvc)
+    } else if output.contains("windows-gnu") {
+        Some(WindowsRustBuildTool::Gnu)
+    } else {
+        None
+    }
 }
 
 fn run_tool_tag_checks(
@@ -1674,8 +1780,8 @@ fn find_prebuilt_binary(root: &Path, bin: &str) -> Option<PathBuf> {
 mod tests {
     use super::{
         command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
-        display_width, fit_display_width, selectable_install_choices, selection_from_choices,
-        selection_window, InstallSession,
+        command_uses_rust_environment, display_width, fit_display_width,
+        selectable_install_choices, selection_from_choices, selection_window, InstallSession,
     };
     use crate::engine::models::{InstallPreview, ToolStatus};
 
@@ -1743,6 +1849,15 @@ mod tests {
         assert!(command_uses_node_environment("nvm use 20.17.0"));
         assert!(!command_uses_node_environment("echo npm_config_registry"));
         assert!(!command_uses_node_environment("echo node-version"));
+    }
+
+    #[test]
+    fn detects_rust_environment_shell_command_tokens() {
+        assert!(command_uses_rust_environment("cargo install cargo-audit"));
+        assert!(command_uses_rust_environment("rustup component add clippy"));
+        assert!(command_uses_rust_environment("rustc --version"));
+        assert!(!command_uses_rust_environment("echo cargo_registry"));
+        assert!(!command_uses_rust_environment("cargo-install-helper"));
     }
 
     #[test]

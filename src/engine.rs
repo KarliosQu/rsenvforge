@@ -66,10 +66,13 @@ mod tests {
             [preinstall.standard.linux]
             commands = ["sudo apt-get install -y pkg-config libssl-dev"]
 
-            [environment]
+            [environment.linux]
             cargo_config = ["[net]", "git-fetch-with-cli = true"]
             bashrc = [". \"$HOME/.cargo/env\""]
             npmrc = ["registry=https://mirror.com/npm/"]
+
+            [environment.windows]
+            variables = ["RUSTUP_DIST_SERVER=https://rustup.internal.example"]
 
             [tag_checks.proxy]
             check = "echo proxy-ok"
@@ -95,13 +98,20 @@ mod tests {
             vec!["sudo apt-get install -y pkg-config libssl-dev"]
         );
         assert_eq!(
-            config.environment.cargo_config,
+            config.environment.linux.cargo_config,
             vec!["[net]", "git-fetch-with-cli = true"]
         );
-        assert_eq!(config.environment.bashrc, vec![". \"$HOME/.cargo/env\""]);
         assert_eq!(
-            config.environment.npmrc,
+            config.environment.linux.bashrc,
+            vec![". \"$HOME/.cargo/env\""]
+        );
+        assert_eq!(
+            config.environment.linux.npmrc,
             vec!["registry=https://mirror.com/npm/"]
+        );
+        assert_eq!(
+            config.environment.windows.variables,
+            vec!["RUSTUP_DIST_SERVER=https://rustup.internal.example"]
         );
         assert_eq!(config.tools[0].name, "python");
         assert_eq!(config.tools[0].tags, vec!["proxy"]);
@@ -293,7 +303,7 @@ mod tests {
 
     #[test]
     fn builtin_config_puts_environment_and_preinstall_first() {
-        let environment_index = BUILTIN_CONFIG.find("[environment]").unwrap();
+        let environment_index = BUILTIN_CONFIG.find("[environment.windows]").unwrap();
         let preinstall_index = BUILTIN_CONFIG.find("[preinstall.light.linux]").unwrap();
         let profiles_index = BUILTIN_CONFIG.find("[profiles.light]").unwrap();
 
@@ -359,6 +369,7 @@ mod tests {
             .unwrap();
         assert!(config
             .environment
+            .linux
             .bashrc
             .iter()
             .any(|line| line.contains("$HOME/.local/bin:$PATH")));
