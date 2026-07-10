@@ -248,8 +248,8 @@ name = "rust-toolchain"
 tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
-install_windows = "rustup toolchain install stable && rustup component add rustfmt clippy"
-install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install stable && rustup component add rustfmt clippy; else curl -ssf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain stable && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy; fi"
+install_windows = "curl.exe -fsSL \"https://rsproxy.cn/rustup/dist/x86_64-pc-windows-gnu/rustup-init.exe\" -o \"%TEMP%\\rsenvforge-rustup-init.exe\" && \"%TEMP%\\rsenvforge-rustup-init.exe\" -y --default-toolchain 1.89.0 && set \"PATH=%USERPROFILE%\\.cargo\\bin;%PATH%\" && rustup toolchain install 1.89.0 && rustup default 1.89.0 && rustup component add rustfmt clippy --toolchain 1.89.0 && del /F /Q \"%TEMP%\\rsenvforge-rustup-init.exe\""
+install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install 1.89.0 && rustup default 1.89.0 && rustup component add rustfmt clippy --toolchain 1.89.0; else curl -ssf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain 1.89.0 && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy --toolchain 1.89.0; fi"
 
 [[tools]]
 name = "cargo-llvm-cov"

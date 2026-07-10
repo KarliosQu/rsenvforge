@@ -223,7 +223,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
-| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 stable；Windows: 已有 MSVC 时安装 `stable-x86_64-pc-windows-msvc`，只有 GNU 时安装 `stable-x86_64-pc-windows-gnu`，两者都没有时先补 GNU |
+| 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 Rust 1.89.0；Windows: 通过 `install_windows` 中配置的 URL 下载 Rustup 安装器，并安装 Rust 1.89.0 |
 | 工具 | `nodejs` | Linux: 从 Node.js 模板地址下载 20.17.0 压缩包并安装到 `~/.local/opt`；Windows: 使用 winget 安装 Node.js LTS |
 | 工具 | `gitnexus` | 复用 `nodejs` 准备好的 Node 20+，按平台选择离线包执行 `npm install -g <package-url>` |
 
@@ -231,7 +231,7 @@ Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` �
 
 Linux 下 `gitnexus` 安装前会运行 `node20` 和 `npm-mirror` 标签检查，因此系统 apt 提供的低版本 Node.js 不会被误认为满足要求。`gitnexus` 默认按平台选择离线 npm 包：Windows、Linux x64、Linux arm64 分别在 `rsenvforge.toml` 的 `install_windows` / `install_linux` 中配置对应 URL。安装时会输出检测到的目标平台，例如 `windows`、`linux-x64` 或 `linux-arm64`。
 
-Windows 下安装 `rust-toolchain` 时，rsenvforge 会先检测 MSVC 与 GNU。已有 MSVC 时优先安装 MSVC Rust 工具链；只有 GNU 时安装 GNU Rust 工具链；两者都没有时会优先安装 `gnu`，再安装 GNU Rust 工具链。MSVC 检测会同时确认 `cl/link` 是否已在终端可用，或验证 `vcvars64.bat` 是否存在；后一种情况会在 rsenvforge 执行 Rust/Cargo 命令时自动加载 Visual Studio C++ 开发环境。GNU 检测会验证 GCC 目标为 x64 MinGW，避免把 MSYS2、Cygwin 或其他 GCC 误判为 Rust GNU 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
+Windows 下的 `rust-toolchain` 安装命令完全由 TOML 的 `install_windows` 控制，不再由程序生成。默认命令直接下载 GNU Rustup 安装器；如需 MSVC，直接将该命令中的 URL 改为 `.../x86_64-pc-windows-msvc/rustup-init.exe`，并在安装选择界面选择 `msvc` 而不选择 `gnu`。MSVC 检测会同时确认 `cl/link` 是否已在终端可用，或验证 `vcvars64.bat` 是否存在；后一种情况会在 rsenvforge 执行 Rust/Cargo 命令时自动加载 Visual Studio C++ 开发环境。GNU 检测会验证 GCC 目标为 x64 MinGW，避免把 MSYS2、Cygwin 或其他 GCC 误判为 Rust GNU 工具链。`gnu` 和 `msvc` 均位于 `light` 等级，安装前也会显示检测结果。
 
 ### full
 
@@ -336,7 +336,7 @@ Linux 下如果当前用户已经是 `root`，`rsenvforge` 会在执行安装命
 | `variables` | `KEY=value` 列表。Windows 下写入当前安装进程和 `HKCU\Environment`；Linux 下会转为 `export KEY=value` 并追加至 `~/.bashrc` |
 | `bashrc` | 仅 Linux 可用，追加到 `~/.bashrc`；其中 `export KEY=value` 也会在本次安装进程中立即生效 |
 
-运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 与 `variables` 中的缺失内容写入 `~/.bashrc`；Windows 下会将 `variables` 写入当前安装进程和当前用户环境变量。这样配置的 `RUSTUP_DIST_SERVER`、`RUSTUP_UPDATE_ROOT` 会在 Windows Rust toolchain 安装前生效。如果检测到用户原本没有安装 `rust-toolchain`，在 Rust toolchain 安装完成后会再次确保这些环境文件已经写入，并刷新 rsenvforge 当前安装进程的 `PATH`、`CARGO_HOME` 与 `RUSTUP_HOME`，让后续安装命令可以直接找到 `cargo` 和 `rustup`。
+运行 `install` 时，如果 Cargo `config.toml` 不存在或内容为空，`rsenvforge` 会创建该文件并写入 `cargo_config`。`npmrc` 会按缺失行追加到用户级 `.npmrc`。Linux 下也会在执行 `preinstall` 之前，把 `bashrc` 与 `variables` 中的缺失内容写入 `~/.bashrc`；Windows 下会将 `variables` 写入当前安装进程和当前用户环境变量。Windows 配置的 `RUSTUP_DIST_SERVER` 与 `RUSTUP_UPDATE_ROOT` 会在 Rust toolchain 安装前生效。
 
 已经打开的父终端环境无法被子进程反向修改。Linux 下如果 `rsenvforge install` 结束后当前终端仍找不到 `cargo` 或 `rustup`，请执行 `source ~/.bashrc`、`. "$HOME/.cargo/env"`，或重新打开终端；Windows 下请重新打开 PowerShell/CMD，使当前用户环境变量重新加载。
 
