@@ -15,7 +15,8 @@ use super::constants::CONFIG_FILE;
 use super::discovery::{discover_crates, discover_skills};
 use super::envfile::{
     apply_after_rust_install_environment, apply_install_start_environment,
-    refresh_install_finish_environment, refresh_node_process_environment,
+    persist_windows_gnu_user_path, refresh_install_finish_environment,
+    refresh_node_process_environment, refresh_windows_gnu_process_environment,
 };
 use super::error::ForgeError;
 use super::fsutil::{copy_dir, copy_file, create_dir_all, remove_dir_all, remove_file};
@@ -1090,6 +1091,10 @@ fn install_tool(
         }
     }
     session.mark_installed(&tool.name);
+    if tool.name == "gnu" {
+        persist_windows_gnu_user_path()?;
+        refresh_windows_gnu_process_environment();
+    }
     if is_rust_toolchain(&tool.name) {
         if let Some(kind) = active_windows_rust_build_tool() {
             session.set_windows_rust_build_tool(kind);

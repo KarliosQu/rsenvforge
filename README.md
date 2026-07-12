@@ -196,7 +196,7 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 
 | 类型 | 名称 | 默认安装方式 |
 | --- | --- | --- |
-| 工具 | `gnu` | Windows: `winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT`；Linux: 不支持 |
+| 工具 | `gnu` | Windows: 下载内网 WinLibs x64 UCRT ZIP，解压到 `%LOCALAPPDATA%\\rsenvforge\\toolchains\\winlibs` 并写入用户 PATH；Linux: 不支持 |
 | 工具 | `msvc` | Windows: `winget install -e --id Microsoft.VisualStudio.2022.BuildTools` 并安装 C++ Build Tools；Linux: 不支持 |
 | 工具 | `cargo-llvm-cov` | `cargo install cargo-llvm-cov` |
 | 工具 | `bindgen-cli` | `cargo install bindgen-cli` |
@@ -217,6 +217,8 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `python` | Windows: winget；Linux: `apt-get install -y python3 python3-pip` |
 | 工具 | `ninja` | Windows: winget；Linux: `apt-get install -y ninja-build` |
 | 工具 | `valgrind` | Linux: `apt-get install -y valgrind`；Windows: 不支持 |
+
+Windows 的 `gnu` 使用内网 WinLibs x64 UCRT ZIP，不依赖 `winget`、MSYS2 或外网时区配置。将 ZIP 放到 `http://internal-host/packages/winlibs-x86_64-ucrt.zip`；ZIP 根目录必须直接包含 `mingw64/`。安装后会解压到 `%LOCALAPPDATA%\rsenvforge\toolchains\winlibs`，rsenvforge 会写入当前用户 PATH 并立即刷新本次安装进程的 PATH。当前提供的包 SHA-256 为 `78eff1e2e804b6a6320c713f084b8f820c662104a24cea6a3bfcab82032bdd60`。
 
 ### standard
 

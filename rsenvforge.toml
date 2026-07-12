@@ -224,9 +224,11 @@ check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; npm --version || exit $?;
 
 [[tools]]
 name = "gnu"
+# 内网 ZIP 根目录必须直接包含 mingw64/。将最终包放到
+# http://internal-host/packages/winlibs-x86_64-ucrt.zip 后即可直接安装。
 check_windows = "gcc -dumpmachine | findstr /I /R \"x86_64.*mingw mingw.*x86_64\" >NUL"
 check_linux = "0"
-install_windows = "winget install -e --id BrechtSanders.WinLibs.POSIX.UCRT"
+install_windows = "curl.exe --noproxy \"*\" -fsSL \"http://internal-host/packages/winlibs-x86_64-ucrt.zip\" -o \"%TEMP%\\rsenvforge-winlibs.zip\" && if not exist \"%LOCALAPPDATA%\\rsenvforge\\toolchains\\winlibs\" mkdir \"%LOCALAPPDATA%\\rsenvforge\\toolchains\\winlibs\" && tar.exe -xf \"%TEMP%\\rsenvforge-winlibs.zip\" -C \"%LOCALAPPDATA%\\rsenvforge\\toolchains\\winlibs\" && del /F /Q \"%TEMP%\\rsenvforge-winlibs.zip\" && set \"PATH=%LOCALAPPDATA%\\rsenvforge\\toolchains\\winlibs\\mingw64\\bin;%PATH%\" && gcc -dumpmachine"
 install_linux = "0"
 
 [[tools]]
@@ -248,7 +250,9 @@ name = "rust-toolchain"
 tags = []
 check_windows = "rustup --version"
 check_linux = "rustup --version"
-install_windows = "curl.exe -fsSL \"https://rsproxy.cn/rustup/dist/x86_64-pc-windows-gnu/rustup-init.exe\" -o \"%TEMP%\\rsenvforge-rustup-init.exe\" && \"%TEMP%\\rsenvforge-rustup-init.exe\" -y --default-toolchain 1.89.0 && set \"PATH=%USERPROFILE%\\.cargo\\bin;%PATH%\" && rustup toolchain install 1.89.0 && rustup default 1.89.0 && rustup component add rustfmt clippy --toolchain 1.89.0 && del /F /Q \"%TEMP%\\rsenvforge-rustup-init.exe\""
+# rustup-init 的文件名必须保持为 rustup-init.exe；安装源由
+# [environment.windows].variables 中的 RUSTUP_UPDATE_ROOT 决定。
+install_windows = "curl.exe -fsSL \"%RUSTUP_UPDATE_ROOT%/dist/x86_64-pc-windows-gnu/rustup-init.exe\" -o \"%TEMP%\\rustup-init.exe\" && \"%TEMP%\\rustup-init.exe\" -y --default-toolchain 1.89.0 && set \"PATH=%USERPROFILE%\\.cargo\\bin;%PATH%\" && rustup toolchain install 1.89.0 && rustup default 1.89.0 && rustup component add rustfmt clippy --toolchain 1.89.0 && del /F /Q \"%TEMP%\\rustup-init.exe\""
 install_linux = "set -o pipefail; if command -v rustup >/dev/null 2>&1; then rustup toolchain install 1.89.0 && rustup default 1.89.0 && rustup component add rustfmt clippy --toolchain 1.89.0; else curl -ssf https://rsproxy.cn/rustup-init.sh | sh -s -- -y --default-toolchain 1.89.0 && . \"$HOME/.cargo/env\" && rustup component add rustfmt clippy --toolchain 1.89.0; fi"
 
 [[tools]]

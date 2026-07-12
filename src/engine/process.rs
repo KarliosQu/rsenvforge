@@ -1,4 +1,6 @@
 use std::io::{self, IsTerminal, Read, Write};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -166,7 +168,7 @@ pub(crate) fn run_shell_capture(command: &str) -> Result<String, ForgeError> {
 fn shell_command(command: &str) -> Command {
     if cfg!(windows) {
         let mut cmd = Command::new("cmd");
-        cmd.arg("/C").arg(command);
+        cmd.arg("/C").raw_arg(command);
         cmd
     } else if command_exists("bash") {
         let mut cmd = Command::new("bash");
@@ -453,8 +455,8 @@ pub(crate) fn command_status_text(command: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        progress_notice_output, status_bar_lines, strip_sudo_from_apt_commands, ShellStep,
-        STATUS_BAR_LINES,
+        progress_notice_output, run_shell_capture, status_bar_lines, strip_sudo_from_apt_commands,
+        ShellStep, STATUS_BAR_LINES,
     };
 
     #[test]
@@ -512,5 +514,15 @@ mod tests {
             lines.iter().filter(|line| line.starts_with("  ")).count(),
             5
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn preserves_quoted_powershell_command_on_windows() {
+        let output = run_shell_capture(
+            "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command \"$value = 'quoted-command-ok'; Write-Output $value\"",
+        )
+        .unwrap();
+        assert_eq!(output.trim(), "quoted-command-ok");
     }
 }

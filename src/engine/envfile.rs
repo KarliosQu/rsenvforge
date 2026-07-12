@@ -236,6 +236,65 @@ pub(crate) fn refresh_node_process_environment() {
     }
 }
 
+pub(crate) fn refresh_windows_gnu_process_environment() {
+    if !cfg!(target_os = "windows") {
+        return;
+    }
+    let Some(bin) = windows_gnu_bin_dir() else {
+        return;
+    };
+    let added = prepend_process_path([bin], false);
+    if !added.is_empty() {
+        println!("已刷新当前安装进程 GNU 环境：{}", display_paths(&added));
+    }
+}
+
+pub(crate) fn persist_windows_gnu_user_path() -> Result<(), ForgeError> {
+    if !cfg!(target_os = "windows") {
+        return Ok(());
+    }
+    let Some(bin) = windows_gnu_bin_dir() else {
+        return Ok(());
+    };
+    let system_root = env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let powershell = system_root
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    let bin = bin.display().to_string().replace('\'', "''");
+    let script = format!(
+        "$bin = '{bin}'; $current = [Environment]::GetEnvironmentVariable('Path', 'User'); if ([string]::IsNullOrWhiteSpace($current)) {{ $next = $bin }} elseif (((';' + $current + ';').IndexOf(';' + $bin + ';', [System.StringComparison]::OrdinalIgnoreCase)) -lt 0) {{ $next = $current.TrimEnd(';') + ';' + $bin }} else {{ $next = $current }}; [Environment]::SetEnvironmentVariable('Path', $next, 'User')"
+    );
+    let output = Command::new(&powershell)
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|error| ForgeError::Command(format!("无法写入 Windows 用户 PATH：{error}")))?;
+    if output.status.success() {
+        println!("已写入 Windows 用户 PATH：{}", bin);
+        Ok(())
+    } else {
+        Err(ForgeError::Command(format!(
+            "无法写入 Windows 用户 PATH：{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+fn windows_gnu_bin_dir() -> Option<PathBuf> {
+    let local_app_data = env::var_os("LOCALAPPDATA")?;
+    Some(
+        PathBuf::from(local_app_data)
+            .join("rsenvforge")
+            .join("toolchains")
+            .join("winlibs")
+            .join("mingw64")
+            .join("bin"),
+    )
+}
+
 fn push_env_path(target: &mut Vec<PathBuf>, name: &str) {
     if let Some(value) = env::var_os(name).filter(|value| !value.is_empty()) {
         target.push(PathBuf::from(value));
@@ -412,7 +471,7 @@ mod tests {
     use super::{
         append_lines_if_missing, apply_export_lines_to_process, parse_variable_line,
         refresh_node_process_environment, refresh_rust_process_environment,
-        write_cargo_config_if_empty,
+        refresh_windows_gnu_process_environment, write_cargo_config_if_empty,
     };
     use std::sync::Mutex;
     use std::{env, ffi::OsString, fs};
@@ -646,5 +705,34 @@ mod tests {
         restore_env("NVM_HOME", old_nvm_home);
         restore_env("PATH", old_path);
         let _ = fs::remove_dir_all(temp);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn refreshes_windows_gnu_environment_for_current_process() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp =
+            std::env::temp_dir().join(format!("rsenvforge-envfile-gnu-{}", std::process::id()));
+        let bin = temp
+            .join("rsenvforge")
+            .join("toolchains")
+            .join("winlibs")
+            .join("mingw64")
+            .join("bin");
+        let old_local_app_data = env::var_os("LOCALAPPDATA");
+        let old_path = env::var_os("PATH");
+
+        fs::create_dir_all(&bin).unwrap();
+        env::set_var("LOCALAPPDATA", &temp);
+        env::set_var("PATH", "");
+
+        refresh_windows_gnu_process_environment();
+
+        let paths = env::split_paths(&env::var_os("PATH").unwrap()).collect::<Vec<_>>();
+        assert!(paths.iter().any(|path| path == &bin));
+
+        restore_env("LOCALAPPDATA", old_local_app_data);
+        restore_env("PATH", old_path);
+        fs::remove_dir_all(temp).unwrap();
     }
 }
