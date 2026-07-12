@@ -14,7 +14,7 @@ struct InputState {
     pending: VecDeque<String>,
 }
 
-pub(crate) fn read_user_line() -> Result<String, ForgeError> {
+pub fn read_user_line() -> Result<String, ForgeError> {
     let mut input = input_state()
         .lock()
         .map_err(|_| ForgeError::Command("读取用户输入时发生内部错误".to_string()))?;

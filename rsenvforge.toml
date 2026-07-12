@@ -371,7 +371,8 @@ install_linux = "cargo install cargo-semver-checks"
 name = "nodejs"
 check_windows = "node --version && npm --version && node -e \"const major = Number(process.versions.node.split('.')[0]); process.exit(major >= 20 ? 0 : 1)\""
 check_linux = "export PATH=\"$HOME/.local/bin:$PATH\"; version=$(node --version) || exit $?; npm --version || exit $?; echo \"$version\"; major=${version#v}; major=${major%%.*}; test \"$major\" -ge 20"
-install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
+# install_windows = "winget install -e --id OpenJS.NodeJS.LTS && node --version && npm --version"
+install_windows = "curl.exe --noproxy \"*\" -fsSL \"http://internal-host/packages/node-v20.17.0-x64.msi\" -o \"%TEMP%\\rsenvforge-node.msi\" && msiexec.exe /i \"%TEMP%\\rsenvforge-node.msi\" /qn /norestart && del /F /Q \"%TEMP%\\rsenvforge-node.msi\" && set \"PATH=%ProgramFiles%\\nodejs;%PATH%\" && node --version && npm --version"
 install_linux = "set -o pipefail; . \"$HOME/.bashrc\" >/dev/null 2>&1 || true; version=\"${RSENVFORGE_NODEJS_VERSION:-20.17.0}\"; case \"$(uname -m)\" in x86_64|amd64) node_arch=x64 ;; aarch64|arm64) node_arch=arm64 ;; *) echo \"不支持的 Node.js 架构：$(uname -m)\"; exit 1 ;; esac; platform=linux; package=\"node-v${version}-${platform}-${node_arch}\"; archive_url=\"${RSENVFORGE_NODEJS_ARCHIVE_URL:-}\"; if [ -z \"$archive_url\" ]; then mirror=\"${RSENVFORGE_NODEJS_MIRROR:-}\"; test -n \"$mirror\" || { echo '缺少 RSENVFORGE_NODEJS_ARCHIVE_URL 或 RSENVFORGE_NODEJS_MIRROR'; exit 1; }; archive_url=\"${mirror%/}/v{version}/{package}.tar.gz\"; fi; archive_url=\"${archive_url//\\{version\\}/$version}\"; archive_url=\"${archive_url//\\{arch\\}/$node_arch}\"; archive_url=\"${archive_url//\\{platform\\}/$platform}\"; archive_url=\"${archive_url//\\{package\\}/$package}\"; case \"$archive_url\" in *.tar.xz) tar_args=-xJ ;; *.tar.gz|*.tgz) tar_args=-xz ;; *) echo \"不支持的 Node.js 压缩包格式：$archive_url\"; exit 1 ;; esac; install_dir=\"$HOME/.local/opt/$package\"; mkdir -p \"$install_dir\" \"$HOME/.local/bin\" && curl -fsSL \"$archive_url\" | tar \"$tar_args\" --strip-components=1 -C \"$install_dir\" || exit $?; ln -sf \"$install_dir/bin/node\" \"$HOME/.local/bin/node\"; ln -sf \"$install_dir/bin/npm\" \"$HOME/.local/bin/npm\"; ln -sf \"$install_dir/bin/npx\" \"$HOME/.local/bin/npx\"; touch \"$HOME/.bashrc\"; grep -q '\\$HOME/.local/bin' \"$HOME/.bashrc\" || printf '\\nexport PATH=\"$HOME/.local/bin:$PATH\"\\n' >> \"$HOME/.bashrc\"; export PATH=\"$HOME/.local/bin:$PATH\"; node_global_bin=\"$(npm prefix -g)/bin\"; grep -q \"$node_global_bin\" \"$HOME/.bashrc\" || printf '\\nexport PATH=\"%s:$PATH\"\\n' \"$node_global_bin\" >> \"$HOME/.bashrc\"; export PATH=\"$node_global_bin:$PATH\"; node --version && npm --version && node -e 'const major = Number(process.versions.node.split(\".\")[0]); process.exit(major >= 20 ? 0 : 1)'"
 
 [[tools]]
@@ -386,14 +387,16 @@ install_linux = ". \"$HOME/.bashrc\" >/dev/null 2>&1 || true; case \"$(uname -m)
 name = "python"
 check_windows = "python --version"
 check_linux = "python3 --version || python --version"
-install_windows = "winget install -e --id Python.Python.3.12"
+# install_windows = "winget install -e --id Python.Python.3.12"
+install_windows = "curl.exe --noproxy \"*\" -fsSL \"http://internal-host/packages/python-3.12.10-amd64.exe\" -o \"%TEMP%\\rsenvforge-python.exe\" && \"%TEMP%\\rsenvforge-python.exe\" /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=0 Include_pip=1 Include_test=0 && del /F /Q \"%TEMP%\\rsenvforge-python.exe\" && set \"PATH=%LOCALAPPDATA%\\Programs\\Python\\Python312;%LOCALAPPDATA%\\Programs\\Python\\Python312\\Scripts;%PATH%\" && python --version && python -m pip --version"
 install_linux = "apt-get update && apt-get install -y python3 python3-pip"
 
 [[tools]]
 name = "ninja"
 check_windows = "ninja --version"
 check_linux = "ninja --version"
-install_windows = "winget install -e --id Ninja-build.Ninja"
+# install_windows = "winget install -e --id Ninja-build.Ninja"
+install_windows = "curl.exe --noproxy \"*\" -fsSL \"http://internal-host/packages/ninja-win.zip\" -o \"%TEMP%\\rsenvforge-ninja.zip\" && if not exist \"%LOCALAPPDATA%\\rsenvforge\\toolchains\\ninja\" mkdir \"%LOCALAPPDATA%\\rsenvforge\\toolchains\\ninja\" && tar.exe -xf \"%TEMP%\\rsenvforge-ninja.zip\" -C \"%LOCALAPPDATA%\\rsenvforge\\toolchains\\ninja\" && del /F /Q \"%TEMP%\\rsenvforge-ninja.zip\" && set \"PATH=%LOCALAPPDATA%\\rsenvforge\\toolchains\\ninja;%PATH%\" && ninja --version"
 install_linux = "apt-get update && apt-get install -y ninja-build"
 
 [[tools]]

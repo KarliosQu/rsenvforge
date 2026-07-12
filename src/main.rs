@@ -1,12 +1,12 @@
 use std::env;
-use std::io;
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process;
 
 use rsenvforge::{
     apply_apt_mirror, apt_mirror_preview, check_apt_mirror, doctor_report, init_config,
-    install_crate_source, install_profile, load_config, read_registry, remove_installed,
-    update_installed, AptMirrorPreview, InstallKind, InstallOptions, Profile,
+    install_crate_source, install_profile, load_config, read_console_line, read_registry,
+    remove_installed, update_installed, AptMirrorPreview, InstallKind, InstallOptions, Profile,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -20,6 +20,9 @@ fn main() {
 
 fn run(args: Vec<String>) -> Result<(), String> {
     let Some(command) = args.first().map(String::as_str) else {
+        if io::stdin().is_terminal() && io::stdout().is_terminal() {
+            return run_launcher_menu();
+        }
         print_help();
         return Ok(());
     };
@@ -43,6 +46,64 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         unknown => Err(format!("未知命令：{unknown}")),
     }
+}
+
+fn run_launcher_menu() -> Result<(), String> {
+    loop {
+        print_launcher_menu();
+        print!("请输入序号：");
+        io::stdout()
+            .flush()
+            .map_err(|error| format!("刷新菜单输入提示失败：{error}"))?;
+        let choice = read_console_line().map_err(|error| format!("读取菜单输入失败：{error}"))?;
+
+        match choice.trim() {
+            "1" => {
+                run_launcher_action("安装轻量环境", || cmd_install(&["light".to_string()]))?
+            }
+            "2" => run_launcher_action("安装标准环境", || {
+                cmd_install(&["standard".to_string()])
+            })?,
+            "3" => {
+                run_launcher_action("安装完整环境", || cmd_install(&["full".to_string()]))?
+            }
+            "4" => run_launcher_action("查看已安装工具", || cmd_list(&[]))?,
+            "5" => run_launcher_action("系统诊断", || cmd_doctor(&[]))?,
+            "6" | "h" | "H" | "help" => print_help(),
+            "0" | "q" | "Q" | "quit" | "exit" => {
+                println!("已退出 rsenvforge。");
+                return Ok(());
+            }
+            "" => println!("请输入菜单序号。"),
+            _ => println!("未知菜单选项，请输入 0 到 6。"),
+        }
+        println!();
+    }
+}
+
+fn run_launcher_action<F>(label: &str, action: F) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    println!("\n开始：{label}");
+    if let Err(error) = action() {
+        println!("{label}失败：{error}");
+    }
+    Ok(())
+}
+
+fn print_launcher_menu() {
+    println!(
+        "\nrsenvforge {VERSION}
+
+1. 安装轻量环境
+2. 安装标准环境
+3. 安装完整环境
+4. 查看已安装工具
+5. 系统诊断
+6. 查看命令帮助
+0. 退出"
+    );
 }
 
 fn cmd_init(args: &[String]) -> Result<(), String> {
@@ -278,10 +339,7 @@ fn print_apt_mirror_preview(preview: &AptMirrorPreview) {
 }
 
 fn confirm() -> Result<bool, String> {
-    let mut answer = String::new();
-    io::stdin()
-        .read_line(&mut answer)
-        .map_err(|error| format!("读取确认输入失败：{error}"))?;
+    let answer = read_console_line().map_err(|error| format!("读取确认输入失败：{error}"))?;
     Ok(matches!(answer.trim(), "Y" | "y"))
 }
 
@@ -304,6 +362,7 @@ fn print_help() {
 
 用法：
     rsenvforge <command> [options]
+    rsenvforge                       在交互终端打开启动菜单
 
 命令：
     init [--force]                 在当前目录生成默认 rsenvforge.toml

@@ -2,13 +2,13 @@
 
 `rsenvforge` 是一个用于准备 Rust 开发环境的命令行工具。它读取 `rsenvforge.toml` 中的安装表单，先检测工具安装状态，再询问是否安装缺失项。
 
-默认命令：
+默认安装命令：
 
 ```powershell
 rsenvforge install
 ```
 
-无参数时使用 `standard` 等级。
+在 PowerShell、CMD 或双击 Windows 的 `rsenvforge.exe` 时，不带参数会打开交互启动菜单，可选择轻量、标准、完整安装，以及查看安装记录和系统诊断。脚本、管道等非交互环境中，无参数只显示帮助，避免阻塞自动化流程。
 
 ## 安装与运行
 
@@ -214,8 +214,8 @@ Linux 下运行 `install` 时，如果配置了 `[apt_mirror]`，会在执行安
 | 工具 | `cargo-semver-checks` | `cargo install cargo-semver-checks` |
 | 工具 | `rust-checker-cli` | `cargo install rust-checker-cli` |
 | 工具 | `rust-bot` | `cargo install rust-bot` |
-| 工具 | `python` | Windows: winget；Linux: `apt-get install -y python3 python3-pip` |
-| 工具 | `ninja` | Windows: winget；Linux: `apt-get install -y ninja-build` |
+| 工具 | `python` | Windows: 下载内网 Python 3.12.10 安装器；Linux: `apt-get install -y python3 python3-pip` |
+| 工具 | `ninja` | Windows: 下载内网 Ninja ZIP，解压到 `%LOCALAPPDATA%\\rsenvforge\\toolchains\\ninja` 并写入用户 PATH；Linux: `apt-get install -y ninja-build` |
 | 工具 | `valgrind` | Linux: `apt-get install -y valgrind`；Windows: 不支持 |
 
 Windows 的 `gnu` 使用内网 WinLibs x64 UCRT ZIP，不依赖 `winget`、MSYS2 或外网时区配置。将 ZIP 放到 `http://internal-host/packages/winlibs-x86_64-ucrt.zip`；ZIP 根目录必须直接包含 `mingw64/`。安装后会解压到 `%LOCALAPPDATA%\rsenvforge\toolchains\winlibs`，rsenvforge 会写入当前用户 PATH 并立即刷新本次安装进程的 PATH。当前提供的包 SHA-256 为 `78eff1e2e804b6a6320c713f084b8f820c662104a24cea6a3bfcab82032bdd60`。
@@ -226,7 +226,7 @@ Windows 的 `gnu` 使用内网 WinLibs x64 UCRT ZIP，不依赖 `winget`、MSYS2
 | --- | --- | --- |
 | 工具 | `rust-build-base` | Linux: `apt-get update && apt-get install -y build-essential pkg-config libssl-dev`；Windows: 不支持 |
 | 工具 | `rust-toolchain` | Linux: 无 rustup 时使用 `curl -ssf` 调用 rustup-init 安装 Rust 1.89.0；Windows: 通过 `install_windows` 中配置的 URL 下载 Rustup 安装器，并安装 Rust 1.89.0 |
-| 工具 | `nodejs` | Linux: 从 Node.js 模板地址下载 20.17.0 压缩包并安装到 `~/.local/opt`；Windows: 使用 winget 安装 Node.js LTS |
+| 工具 | `nodejs` | Linux: 从 Node.js 模板地址下载 20.17.0 压缩包并安装到 `~/.local/opt`；Windows: 下载内网 Node.js 20.17.0 MSI |
 | 工具 | `gitnexus` | 复用 `nodejs` 准备好的 Node 20+，按平台选择离线包执行 `npm install -g <package-url>` |
 
 Linux 下安装 `nodejs` 时，会优先读取 `RSENVFORGE_NODEJS_ARCHIVE_URL` 模板地址，替换 `{version}`、`{arch}`、`{platform}`、`{package}` 后下载 Node.js 20.17.0 压缩包到 `~/.local/opt`，并将 `~/.local/bin` 写入 PATH。未配置模板地址时，会使用 `RSENVFORGE_NODEJS_MIRROR` 拼接默认下载路径。`nodejs` 安装完成后，rsenvforge 会刷新当前安装进程的 Node.js 环境，并把 `$(npm prefix -g)/bin` 写入当前用户的 `~/.bashrc`，避免 `npm install -g` 已安装但新终端找不到命令。

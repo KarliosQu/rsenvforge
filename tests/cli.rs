@@ -45,6 +45,18 @@ fn init_creates_default_config() {
 }
 
 #[test]
+fn no_arguments_prints_help_when_noninteractive() {
+    let output = Command::new(env!("CARGO_BIN_EXE_rsenvforge"))
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("rsenvforge <command> [options]"));
+    assert!(!text.contains("1. 安装轻量环境"));
+}
+
+#[test]
 fn doctor_reports_proxy_settings() {
     let temp = test_dir("doctor_reports_proxy_settings");
     let home = temp.join("home");

@@ -237,23 +237,56 @@ pub(crate) fn refresh_node_process_environment() {
 }
 
 pub(crate) fn refresh_windows_gnu_process_environment() {
+    refresh_windows_tool_process_environment("GNU", windows_gnu_bin_dir());
+}
+
+pub(crate) fn persist_windows_gnu_user_path() -> Result<(), ForgeError> {
+    persist_windows_tool_user_path(windows_gnu_bin_dir())
+}
+
+pub(crate) fn refresh_windows_ninja_process_environment() {
+    refresh_windows_tool_process_environment("Ninja", windows_ninja_bin_dir());
+}
+
+pub(crate) fn persist_windows_ninja_user_path() -> Result<(), ForgeError> {
+    persist_windows_tool_user_path(windows_ninja_bin_dir())
+}
+
+pub(crate) fn refresh_windows_python_process_environment() {
     if !cfg!(target_os = "windows") {
         return;
     }
-    let Some(bin) = windows_gnu_bin_dir() else {
+    let Some(local_app_data) = env::var_os("LOCALAPPDATA") else {
+        return;
+    };
+    let base = PathBuf::from(local_app_data)
+        .join("Programs")
+        .join("Python")
+        .join("Python312");
+    let added = prepend_process_path([base.clone(), base.join("Scripts")], false);
+    if !added.is_empty() {
+        println!("已刷新当前安装进程 Python 环境：{}", display_paths(&added));
+    }
+}
+
+fn refresh_windows_tool_process_environment(label: &str, bin: Option<PathBuf>) {
+    if !cfg!(target_os = "windows") {
+        return;
+    }
+    let Some(bin) = bin else {
         return;
     };
     let added = prepend_process_path([bin], false);
     if !added.is_empty() {
-        println!("已刷新当前安装进程 GNU 环境：{}", display_paths(&added));
+        println!("已刷新当前安装进程 {label} 环境：{}", display_paths(&added));
     }
 }
 
-pub(crate) fn persist_windows_gnu_user_path() -> Result<(), ForgeError> {
+fn persist_windows_tool_user_path(bin: Option<PathBuf>) -> Result<(), ForgeError> {
     if !cfg!(target_os = "windows") {
         return Ok(());
     }
-    let Some(bin) = windows_gnu_bin_dir() else {
+    let Some(bin) = bin else {
         return Ok(());
     };
     let system_root = env::var_os("SystemRoot")
@@ -292,6 +325,16 @@ fn windows_gnu_bin_dir() -> Option<PathBuf> {
             .join("winlibs")
             .join("mingw64")
             .join("bin"),
+    )
+}
+
+fn windows_ninja_bin_dir() -> Option<PathBuf> {
+    let local_app_data = env::var_os("LOCALAPPDATA")?;
+    Some(
+        PathBuf::from(local_app_data)
+            .join("rsenvforge")
+            .join("toolchains")
+            .join("ninja"),
     )
 }
 
