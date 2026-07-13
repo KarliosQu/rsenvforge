@@ -1,3 +1,5 @@
+use crossterm::event::{self, Event, KeyCode};
+use crossterm::terminal;
 use std::env;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
@@ -51,37 +53,86 @@ fn run(args: Vec<String>) -> Result<(), String> {
 fn run_launcher_menu() -> Result<(), String> {
     loop {
         print_launcher_menu();
-        print!("请输入序号：");
+        print!("按数字键选择：");
         io::stdout()
             .flush()
             .map_err(|error| format!("刷新菜单输入提示失败：{error}"))?;
-        let choice = read_console_line().map_err(|error| format!("读取菜单输入失败：{error}"))?;
-
-        match choice.trim() {
-            "1" => {
-                run_launcher_action("安装轻量环境", || cmd_install(&["light".to_string()]))?
+        match read_launcher_choice()? {
+            LauncherChoice::Install(profile) => {
+                run_launcher_action(launcher_label(profile), || {
+                    cmd_install(&[profile.as_str().to_string()])
+                });
+                wait_for_launcher_close()?;
+                return Ok(());
             }
-            "2" => run_launcher_action("安装标准环境", || {
-                cmd_install(&["standard".to_string()])
-            })?,
-            "3" => {
-                run_launcher_action("安装完整环境", || cmd_install(&["full".to_string()]))?
+            LauncherChoice::List => {
+                run_launcher_action("查看已安装工具", || cmd_list(&[]));
+                wait_for_launcher_close()?;
+                return Ok(());
             }
-            "4" => run_launcher_action("查看已安装工具", || cmd_list(&[]))?,
-            "5" => run_launcher_action("系统诊断", || cmd_doctor(&[]))?,
-            "6" | "h" | "H" | "help" => print_help(),
-            "0" | "q" | "Q" | "quit" | "exit" => {
+            LauncherChoice::Doctor => {
+                run_launcher_action("系统诊断", || cmd_doctor(&[]));
+                wait_for_launcher_close()?;
+                return Ok(());
+            }
+            LauncherChoice::Help => print_help(),
+            LauncherChoice::Exit => {
                 println!("已退出 rsenvforge。");
                 return Ok(());
             }
-            "" => println!("请输入菜单序号。"),
-            _ => println!("未知菜单选项，请输入 0 到 6。"),
         }
         println!();
     }
 }
 
-fn run_launcher_action<F>(label: &str, action: F) -> Result<(), String>
+#[derive(Clone, Copy)]
+enum LauncherChoice {
+    Install(Profile),
+    List,
+    Doctor,
+    Help,
+    Exit,
+}
+
+fn launcher_label(profile: Profile) -> &'static str {
+    match profile {
+        Profile::Light => "安装轻量环境",
+        Profile::Standard => "安装标准环境",
+        Profile::Full => "安装完整环境",
+    }
+}
+
+fn read_launcher_choice() -> Result<LauncherChoice, String> {
+    terminal::enable_raw_mode().map_err(|error| format!("无法启用启动菜单输入：{error}"))?;
+    let result = (|| loop {
+        let event = event::read().map_err(|error| format!("读取启动菜单输入失败：{error}"))?;
+        let Event::Key(key) = event else {
+            continue;
+        };
+        let choice = match key.code {
+            KeyCode::Char('1') => Some(LauncherChoice::Install(Profile::Light)),
+            KeyCode::Char('2') => Some(LauncherChoice::Install(Profile::Standard)),
+            KeyCode::Char('3') => Some(LauncherChoice::Install(Profile::Full)),
+            KeyCode::Char('4') => Some(LauncherChoice::List),
+            KeyCode::Char('5') => Some(LauncherChoice::Doctor),
+            KeyCode::Char('6') | KeyCode::Char('h') | KeyCode::Char('H') => {
+                Some(LauncherChoice::Help)
+            }
+            KeyCode::Char('0') | KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
+                Some(LauncherChoice::Exit)
+            }
+            _ => None,
+        };
+        if let Some(choice) = choice {
+            println!();
+            return Ok(choice);
+        }
+    })();
+    let _ = terminal::disable_raw_mode();
+    result
+}
+
+fn run_launcher_action<F>(label: &str, action: F)
 where
     F: FnOnce() -> Result<(), String>,
 {
@@ -89,7 +140,13 @@ where
     if let Err(error) = action() {
         println!("{label}失败：{error}");
     }
-    Ok(())
+}
+
+fn wait_for_launcher_close() -> Result<(), String> {
+    println!("\n操作结束。按 Enter 关闭窗口。");
+    read_console_line()
+        .map(|_| ())
+        .map_err(|error| format!("读取关闭确认失败：{error}"))
 }
 
 fn print_launcher_menu() {
@@ -102,7 +159,9 @@ fn print_launcher_menu() {
 4. 查看已安装工具
 5. 系统诊断
 6. 查看命令帮助
-0. 退出"
+0. 退出
+
+选择安装等级后，会先检测工具版本，再进入与 install 相同的组件选择和安装确认。"
     );
 }
 
