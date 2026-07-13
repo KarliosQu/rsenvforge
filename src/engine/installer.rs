@@ -5,7 +5,7 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use crossterm::cursor;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, queue};
 
@@ -692,6 +692,9 @@ fn run_selection_event_loop(
         let Event::Key(key) = event else {
             continue;
         };
+        if !is_actionable_key_event(key.kind) {
+            continue;
+        }
         match key.code {
             KeyCode::Up => cursor_index = cursor_index.saturating_sub(1),
             KeyCode::Down => {
@@ -727,6 +730,10 @@ fn run_selection_event_loop(
             _ => {}
         }
     }
+}
+
+fn is_actionable_key_event(kind: KeyEventKind) -> bool {
+    matches!(kind, KeyEventKind::Press | KeyEventKind::Repeat)
 }
 
 fn render_selection_menu(
@@ -1684,10 +1691,18 @@ fn find_prebuilt_binary(root: &Path, bin: &str) -> Option<PathBuf> {
 mod tests {
     use super::{
         command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
-        command_uses_rust_environment, display_width, fit_display_width,
+        command_uses_rust_environment, display_width, fit_display_width, is_actionable_key_event,
         selectable_install_choices, selection_from_choices, selection_window, InstallSession,
     };
     use crate::engine::models::{InstallPreview, ToolStatus};
+    use crossterm::event::KeyEventKind;
+
+    #[test]
+    fn selection_ignores_key_release_events() {
+        assert!(is_actionable_key_event(KeyEventKind::Press));
+        assert!(is_actionable_key_event(KeyEventKind::Repeat));
+        assert!(!is_actionable_key_event(KeyEventKind::Release));
+    }
 
     #[test]
     fn wraps_nvm_commands_after_nvm_is_installed_by_session() {

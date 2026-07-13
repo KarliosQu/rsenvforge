@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal;
 use std::env;
 use std::io::{self, IsTerminal, Write};
@@ -109,6 +109,9 @@ fn read_launcher_choice() -> Result<LauncherChoice, String> {
         let Event::Key(key) = event else {
             continue;
         };
+        if !is_actionable_key_event(key.kind) {
+            continue;
+        }
         let choice = match key.code {
             KeyCode::Char('1') => Some(LauncherChoice::Install(Profile::Light)),
             KeyCode::Char('2') => Some(LauncherChoice::Install(Profile::Standard)),
@@ -130,6 +133,10 @@ fn read_launcher_choice() -> Result<LauncherChoice, String> {
     })();
     let _ = terminal::disable_raw_mode();
     result
+}
+
+fn is_actionable_key_event(kind: KeyEventKind) -> bool {
+    matches!(kind, KeyEventKind::Press | KeyEventKind::Repeat)
 }
 
 fn run_launcher_action<F>(label: &str, action: F)
@@ -447,4 +454,17 @@ fn print_help() {
     remove --force                 跳过删除确认
 "
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_actionable_key_event;
+    use crossterm::event::KeyEventKind;
+
+    #[test]
+    fn launcher_ignores_key_release_events() {
+        assert!(is_actionable_key_event(KeyEventKind::Press));
+        assert!(is_actionable_key_event(KeyEventKind::Repeat));
+        assert!(!is_actionable_key_event(KeyEventKind::Release));
+    }
 }
