@@ -14,9 +14,7 @@ use crossterm::terminal::{self, ClearType};
 use super::error::ForgeError;
 use super::input::try_read_skip_request;
 
-const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
 const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
-const PROGRESS_NOTICE_MAX_LINES: usize = 5;
 const STATUS_BAR_LINES: u16 = 2;
 const MIN_STATUS_BAR_LOG_LINES: u16 = 2;
 const MIN_STATUS_BAR_WIDTH: u16 = 20;
@@ -94,7 +92,6 @@ fn run_shell_labeled_with_options(
         .map(|stderr| collect_command_output(stderr, Arc::clone(&output)));
 
     let started = Instant::now();
-    let mut next_notice = FIRST_PROGRESS_NOTICE_SECONDS;
     let status = loop {
         if user_requested_skip()? {
             terminate_child_process(&mut child);
@@ -114,16 +111,6 @@ fn run_shell_labeled_with_options(
 
         let elapsed = started.elapsed().as_secs();
         status_bar.render(elapsed, &output);
-        if elapsed >= next_notice {
-            status_bar.clear_for_log_output();
-            print_progress_notice(label, elapsed, &output);
-            if show_skip_hint {
-                print_skip_hint(label);
-            }
-            status_bar.render(elapsed, &output);
-            next_notice = next_notice.saturating_mul(2);
-        }
-
         thread::sleep(Duration::from_secs(1));
     };
 
@@ -260,29 +247,18 @@ fn push_output(output: &Arc<Mutex<String>>, text: &str) {
     output.drain(..keep_from);
 }
 
-fn print_progress_notice(label: &str, elapsed: u64, output: &Arc<Mutex<String>>) {
-    let snapshot = output_snapshot(output);
-    let progress = progress_notice_output(&snapshot);
-    println!(
-        "目前{label}的安装已经持续了{elapsed}秒，请注意，目前进度为（最多显示最近 {PROGRESS_NOTICE_MAX_LINES} 行）：\n{progress}"
-    );
-}
-
-fn progress_notice_output(output: &str) -> String {
+fn recent_output_line(output: &str) -> String {
     let output = output.replace('\r', "\n");
     if output.trim().is_empty() {
         return "暂无命令输出".to_string();
     }
-
-    let mut lines = output
+    output
         .lines()
         .map(str::trim_end)
-        .filter(|line| !line.trim().is_empty())
-        .collect::<Vec<_>>();
-    if lines.len() > PROGRESS_NOTICE_MAX_LINES {
-        lines = lines.split_off(lines.len() - PROGRESS_NOTICE_MAX_LINES);
-    }
-    lines.join("\n")
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("暂无命令输出")
+        .to_string()
 }
 
 struct StatusBar {
@@ -321,7 +297,7 @@ impl StatusBar {
             return;
         }
         let snapshot = output_snapshot(output);
-        let recent = progress_notice_output(&snapshot);
+        let recent = recent_output_line(&snapshot);
         let lines = status_bar_lines(
             &self.label,
             self.step,
@@ -348,12 +324,6 @@ impl StatusBar {
     fn finish(&mut self) {
         let _ = self.clear_drawn_region();
         self.active = false;
-    }
-
-    fn clear_for_log_output(&mut self) {
-        if self.active && self.clear_drawn_region().is_err() {
-            self.deactivate_to_plain_output();
-        }
     }
 
     fn deactivate_to_plain_output(&mut self) {
@@ -393,9 +363,7 @@ fn status_bar_lines(
     if show_skip_hint {
         lines.push("操作：输入 T 后回车跳过当前组件".to_string());
     } else {
-        let recent_output = progress_notice_output(recent_output);
-        let recent = recent_output.lines().last().unwrap_or("暂无命令输出");
-        lines.push(format!("最近输出：{recent}"));
+        lines.push(format!("最近输出：{recent_output}"));
     }
     lines
 }
@@ -562,8 +530,8 @@ pub(crate) fn command_status_text(command: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        display_width, fit_status_line, progress_notice_output, run_shell_capture,
-        status_bar_lines, strip_sudo_from_apt_commands, ShellStep, STATUS_BAR_LINES,
+        display_width, fit_status_line, recent_output_line, run_shell_capture, status_bar_lines,
+        strip_sudo_from_apt_commands, ShellStep, STATUS_BAR_LINES,
     };
 
     #[test]
@@ -583,16 +551,15 @@ mod tests {
     }
 
     #[test]
-    fn progress_notice_output_keeps_recent_five_lines() {
-        let progress = progress_notice_output("line1\nline2\nline3\nline4\nline5\nline6\nline7\n");
+    fn recent_output_line_keeps_the_latest_nonempty_line() {
+        let output = recent_output_line("line1\nline2\n\nline3\n");
 
-        assert_eq!(progress, "line3\nline4\nline5\nline6\nline7");
-        assert_eq!(progress.lines().count(), 5);
+        assert_eq!(output, "line3");
     }
 
     #[test]
-    fn progress_notice_output_reports_empty_output() {
-        assert_eq!(progress_notice_output("\n\r\n"), "暂无命令输出");
+    fn recent_output_line_reports_empty_output() {
+        assert_eq!(recent_output_line("\n\r\n"), "暂无命令输出");
     }
 
     #[test]

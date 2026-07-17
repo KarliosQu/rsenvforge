@@ -1164,8 +1164,21 @@ fn install_tool(
         println!("Node.js 环境已刷新到当前安装进程。");
     }
     run_tool_post_install(tool, session, display_mode, step)?;
-    println!("工具 {} 安装完成。", tool.name);
+    let version = check_tool(tool)
+        .version
+        .unwrap_or_else(|| "无法读取版本".to_string());
+    println!("{}", step_completion_message(step, &tool.name, &version));
     Ok(())
+}
+
+fn step_completion_message(step: Option<ShellStep>, name: &str, version: &str) -> String {
+    match step {
+        Some(step) => format!(
+            "Step {}/{} 已完成，安装{}（版本{}）",
+            step.current, step.total, name, version
+        ),
+        None => format!("已完成，安装{}（版本{}）", name, version),
+    }
 }
 
 fn active_windows_rust_build_tool() -> Option<WindowsRustBuildTool> {
@@ -1727,7 +1740,8 @@ mod tests {
         command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
         command_uses_rust_environment, display_width, fit_display_width, is_actionable_key_event,
         selectable_install_choices, selection_from_choices, selection_visible_count,
-        selection_window, InstallSession, SELECTION_MENU_FIXED_LINES,
+        selection_window, step_completion_message, InstallSession, ShellStep,
+        SELECTION_MENU_FIXED_LINES,
     };
     use crate::engine::models::{InstallPreview, ToolStatus};
     use crossterm::event::KeyEventKind;
@@ -1831,6 +1845,25 @@ mod tests {
             u16::try_from(selection_visible_count(terminal_height)).unwrap()
                 + SELECTION_MENU_FIXED_LINES,
             terminal_height
+        );
+    }
+
+    #[test]
+    fn reports_tool_completion_with_step_and_version() {
+        assert_eq!(
+            step_completion_message(
+                Some(ShellStep {
+                    current: 2,
+                    total: 5,
+                }),
+                "cargo-geiger",
+                "cargo-geiger 0.13.0",
+            ),
+            "Step 2/5 已完成，安装cargo-geiger（版本cargo-geiger 0.13.0）"
+        );
+        assert_eq!(
+            step_completion_message(None, "ninja", "1.13.2"),
+            "已完成，安装ninja（版本1.13.2）"
         );
     }
 
