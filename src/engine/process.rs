@@ -166,11 +166,15 @@ pub(crate) fn run_shell_capture(command: &str) -> Result<String, ForgeError> {
 }
 
 fn shell_command(command: &str) -> Command {
-    if cfg!(windows) {
+    #[cfg(windows)]
+    {
         let mut cmd = Command::new("cmd");
         cmd.arg("/C").raw_arg(command);
         cmd
-    } else if command_exists("bash") {
+    }
+
+    #[cfg(not(windows))]
+    if command_exists("bash") {
         let mut cmd = Command::new("bash");
         cmd.arg("-lc").arg(command);
         cmd
@@ -181,6 +185,7 @@ fn shell_command(command: &str) -> Command {
     }
 }
 
+#[cfg(not(windows))]
 fn command_exists(command: &str) -> bool {
     Command::new(command)
         .arg("--version")

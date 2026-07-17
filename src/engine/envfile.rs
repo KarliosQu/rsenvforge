@@ -283,36 +283,42 @@ fn refresh_windows_tool_process_environment(label: &str, bin: Option<PathBuf>) {
 }
 
 fn persist_windows_tool_user_path(bin: Option<PathBuf>) -> Result<(), ForgeError> {
-    if !cfg!(target_os = "windows") {
-        return Ok(());
+    #[cfg(target_os = "windows")]
+    {
+        let Some(bin) = bin else {
+            return Ok(());
+        };
+        let system_root = env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let powershell = system_root
+            .join("System32")
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe");
+        let bin = bin.display().to_string().replace('\'', "''");
+        let script = format!(
+            "$bin = '{bin}'; $current = [Environment]::GetEnvironmentVariable('Path', 'User'); if ([string]::IsNullOrWhiteSpace($current)) {{ $next = $bin }} elseif (((';' + $current + ';').IndexOf(';' + $bin + ';', [System.StringComparison]::OrdinalIgnoreCase)) -lt 0) {{ $next = $current.TrimEnd(';') + ';' + $bin }} else {{ $next = $current }}; [Environment]::SetEnvironmentVariable('Path', $next, 'User')"
+        );
+        let output = Command::new(&powershell)
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .output()
+            .map_err(|error| ForgeError::Command(format!("无法写入 Windows 用户 PATH：{error}")))?;
+        if output.status.success() {
+            println!("已写入 Windows 用户 PATH：{}", bin);
+            Ok(())
+        } else {
+            Err(ForgeError::Command(format!(
+                "无法写入 Windows 用户 PATH：{}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )))
+        }
     }
-    let Some(bin) = bin else {
-        return Ok(());
-    };
-    let system_root = env::var_os("SystemRoot")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    let powershell = system_root
-        .join("System32")
-        .join("WindowsPowerShell")
-        .join("v1.0")
-        .join("powershell.exe");
-    let bin = bin.display().to_string().replace('\'', "''");
-    let script = format!(
-        "$bin = '{bin}'; $current = [Environment]::GetEnvironmentVariable('Path', 'User'); if ([string]::IsNullOrWhiteSpace($current)) {{ $next = $bin }} elseif (((';' + $current + ';').IndexOf(';' + $bin + ';', [System.StringComparison]::OrdinalIgnoreCase)) -lt 0) {{ $next = $current.TrimEnd(';') + ';' + $bin }} else {{ $next = $current }}; [Environment]::SetEnvironmentVariable('Path', $next, 'User')"
-    );
-    let output = Command::new(&powershell)
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .map_err(|error| ForgeError::Command(format!("无法写入 Windows 用户 PATH：{error}")))?;
-    if output.status.success() {
-        println!("已写入 Windows 用户 PATH：{}", bin);
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = bin;
         Ok(())
-    } else {
-        Err(ForgeError::Command(format!(
-            "无法写入 Windows 用户 PATH：{}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )))
     }
 }
 
