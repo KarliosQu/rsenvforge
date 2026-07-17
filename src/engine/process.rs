@@ -17,7 +17,7 @@ use super::input::try_read_skip_request;
 const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
 const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
 const PROGRESS_NOTICE_MAX_LINES: usize = 5;
-const STATUS_BAR_LINES: u16 = 11;
+const STATUS_BAR_LINES: u16 = 2;
 const MIN_STATUS_BAR_LOG_LINES: u16 = 2;
 const MIN_STATUS_BAR_WIDTH: u16 = 20;
 
@@ -384,25 +384,18 @@ fn status_bar_lines(
     show_skip_hint: bool,
     recent_output: &str,
 ) -> Vec<String> {
-    let mut lines = vec!["──────────────── rsenvforge 安装状态 ────────────────".to_string()];
-    if let Some(step) = step {
-        lines.push(format!("Step {}/{}", step.current, step.total));
-    }
-    lines.extend([
-        format!("当前组件：{label}"),
-        format!("已运行：{elapsed} 秒"),
-        "最近输出：".to_string(),
-    ]);
-    let reserved_lines = lines.len() + usize::from(show_skip_hint);
-    let recent_line_limit = usize::from(STATUS_BAR_LINES).saturating_sub(reserved_lines);
-    lines.extend(
-        recent_output
-            .lines()
-            .take(recent_line_limit.min(PROGRESS_NOTICE_MAX_LINES))
-            .map(|line| format!("  {line}")),
-    );
+    let step_text = step
+        .map(|step| format!("Step {}/{} | ", step.current, step.total))
+        .unwrap_or_default();
+    let mut lines = vec![format!(
+        "rsenvforge | {step_text}当前组件：{label} | 已运行：{elapsed} 秒"
+    )];
     if show_skip_hint {
         lines.push("操作：输入 T 后回车跳过当前组件".to_string());
+    } else {
+        let recent_output = progress_notice_output(recent_output);
+        let recent = recent_output.lines().last().unwrap_or("暂无命令输出");
+        lines.push(format!("最近输出：{recent}"));
     }
     lines
 }
@@ -603,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    fn status_bar_lines_include_recent_output_and_skip_hint() {
+    fn status_bar_lines_include_progress_and_skip_hint() {
         let lines = status_bar_lines(
             "demo-tool",
             Some(ShellStep {
@@ -619,14 +612,10 @@ mod tests {
         assert!(lines.iter().any(|line| line.contains("Step 2/8")));
         assert!(lines.iter().any(|line| line.contains("123 秒")));
         assert!(lines.iter().any(|line| line.contains("输入 T 后回车")));
-        assert!(lines.len() <= usize::from(STATUS_BAR_LINES));
+        assert_eq!(lines.len(), usize::from(STATUS_BAR_LINES));
         assert_eq!(
             lines.last().map(String::as_str),
             Some("操作：输入 T 后回车跳过当前组件")
-        );
-        assert_eq!(
-            lines.iter().filter(|line| line.starts_with("  ")).count(),
-            5
         );
     }
 

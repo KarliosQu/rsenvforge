@@ -211,11 +211,7 @@ fn cmd_install(args: &[String]) -> Result<(), String> {
     }
 
     let report = install_profile(&options).map_err(|error| error.to_string())?;
-    println!(
-        "安装流程完成：{} 条安装记录，等级 {}",
-        report.entries.len(),
-        options.profile.as_str()
-    );
+    println!("安装流程完成：等级 {}", options.profile.as_str());
     for entry in report.entries {
         println!(
             "{} {} -> {} 个目标",
