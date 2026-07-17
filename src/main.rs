@@ -57,7 +57,9 @@ fn run_launcher_menu() -> Result<(), String> {
         io::stdout()
             .flush()
             .map_err(|error| format!("刷新菜单输入提示失败：{error}"))?;
-        match read_launcher_choice()? {
+        let choice = read_launcher_choice()?;
+        println!();
+        match choice {
             LauncherChoice::Install(profile) => {
                 run_launcher_action(launcher_label(profile), || {
                     cmd_install(&[profile.as_str().to_string()])
@@ -127,7 +129,6 @@ fn read_launcher_choice() -> Result<LauncherChoice, String> {
             _ => None,
         };
         if let Some(choice) = choice {
-            println!();
             return Ok(choice);
         }
     })();

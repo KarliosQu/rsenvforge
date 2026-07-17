@@ -7,6 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crossterm::cursor;
+use crossterm::queue;
+use crossterm::terminal::{self, ClearType};
+
 use super::error::ForgeError;
 use super::input::try_read_skip_request;
 
@@ -14,6 +18,8 @@ const FIRST_PROGRESS_NOTICE_SECONDS: u64 = 120;
 const PROGRESS_OUTPUT_LIMIT: usize = 8 * 1024;
 const PROGRESS_NOTICE_MAX_LINES: usize = 5;
 const STATUS_BAR_LINES: u16 = 11;
+const MIN_STATUS_BAR_LOG_LINES: u16 = 2;
+const MIN_STATUS_BAR_WIDTH: u16 = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ShellDisplayMode {
@@ -109,6 +115,7 @@ fn run_shell_labeled_with_options(
         let elapsed = started.elapsed().as_secs();
         status_bar.render(elapsed, &output);
         if elapsed >= next_notice {
+            status_bar.clear_for_log_output();
             print_progress_notice(label, elapsed, &output);
             if show_skip_hint {
                 print_skip_hint(label);
@@ -283,6 +290,7 @@ struct StatusBar {
     step: Option<ShellStep>,
     show_skip_hint: bool,
     active: bool,
+    last_region: Option<StatusBarRegion>,
 }
 
 impl StatusBar {
@@ -292,12 +300,15 @@ impl StatusBar {
         show_skip_hint: bool,
         mode: ShellDisplayMode,
     ) -> Self {
-        let active = matches!(mode, ShellDisplayMode::StatusBar) && io::stdout().is_terminal();
+        let active = matches!(mode, ShellDisplayMode::StatusBar)
+            && io::stdout().is_terminal()
+            && status_bar_region().ok().flatten().is_some();
         Self {
             label: label.to_string(),
             step,
             show_skip_hint,
             active,
+            last_region: None,
         }
     }
 
@@ -318,18 +329,52 @@ impl StatusBar {
             self.show_skip_hint,
             &recent,
         );
-        if draw_status_bar(&lines).is_err() {
-            self.active = false;
+        let Ok(Some(region)) = status_bar_region() else {
+            let _ = self.clear_drawn_region();
+            self.deactivate_to_plain_output();
+            return;
+        };
+        if self.clear_drawn_region().is_err() {
+            self.deactivate_to_plain_output();
+            return;
+        }
+        self.last_region = Some(region);
+        if draw_status_bar(&lines, region).is_err() {
+            let _ = self.clear_drawn_region();
+            self.deactivate_to_plain_output();
         }
     }
 
     fn finish(&mut self) {
-        if !self.active {
-            return;
-        }
-        let _ = clear_status_bar();
+        let _ = self.clear_drawn_region();
         self.active = false;
     }
+
+    fn clear_for_log_output(&mut self) {
+        if self.active && self.clear_drawn_region().is_err() {
+            self.deactivate_to_plain_output();
+        }
+    }
+
+    fn deactivate_to_plain_output(&mut self) {
+        self.active = false;
+        if self.show_skip_hint {
+            print_skip_hint(&self.label);
+        }
+    }
+
+    fn clear_drawn_region(&mut self) -> io::Result<()> {
+        let Some(region) = self.last_region.take() else {
+            return Ok(());
+        };
+        clear_status_bar(region)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StatusBarRegion {
+    top: u16,
+    width: u16,
 }
 
 fn status_bar_lines(
@@ -362,33 +407,97 @@ fn status_bar_lines(
     lines
 }
 
-fn draw_status_bar(lines: &[String]) -> io::Result<()> {
-    let (_, height) = crossterm::terminal::size()?;
-    let start_row = height.saturating_sub(STATUS_BAR_LINES).saturating_add(1);
+fn status_bar_region() -> io::Result<Option<StatusBarRegion>> {
+    let (width, height) = terminal::size()?;
+    if width < MIN_STATUS_BAR_WIDTH || height < STATUS_BAR_LINES + MIN_STATUS_BAR_LOG_LINES {
+        return Ok(None);
+    }
+    Ok(Some(StatusBarRegion {
+        top: height - STATUS_BAR_LINES,
+        width,
+    }))
+}
+
+fn draw_status_bar(lines: &[String], region: StatusBarRegion) -> io::Result<()> {
     let mut out = io::stdout();
-    write!(out, "\x1b7")?;
+    queue!(out, cursor::SavePosition)?;
     for offset in 0..STATUS_BAR_LINES {
-        let row = start_row.saturating_add(offset);
-        write!(out, "\x1b[{row};1H\x1b[2K")?;
+        queue!(
+            out,
+            cursor::MoveTo(0, region.top + offset),
+            terminal::Clear(ClearType::CurrentLine)
+        )?;
         if let Some(line) = lines.get(offset as usize) {
-            write!(out, "{line}")?;
+            write!(out, "{}", fit_status_line(line, region.width))?;
         }
     }
-    write!(out, "\x1b8")?;
+    queue!(out, cursor::RestorePosition)?;
     out.flush()
 }
 
-fn clear_status_bar() -> io::Result<()> {
-    let (_, height) = crossterm::terminal::size()?;
-    let start_row = height.saturating_sub(STATUS_BAR_LINES).saturating_add(1);
+fn clear_status_bar(region: StatusBarRegion) -> io::Result<()> {
     let mut out = io::stdout();
-    write!(out, "\x1b7")?;
+    queue!(out, cursor::SavePosition)?;
     for offset in 0..STATUS_BAR_LINES {
-        let row = start_row.saturating_add(offset);
-        write!(out, "\x1b[{row};1H\x1b[2K")?;
+        queue!(
+            out,
+            cursor::MoveTo(0, region.top + offset),
+            terminal::Clear(ClearType::CurrentLine)
+        )?;
     }
-    write!(out, "\x1b8")?;
+    queue!(out, cursor::RestorePosition)?;
     out.flush()
+}
+
+fn fit_status_line(text: &str, terminal_width: u16) -> String {
+    let max_width = usize::from(terminal_width.saturating_sub(1));
+    if display_width(text) <= max_width {
+        return text.to_string();
+    }
+    if max_width <= 3 {
+        return take_display_width(text, max_width);
+    }
+    let mut fitted = take_display_width(text, max_width - 3);
+    fitted.push_str("...");
+    fitted
+}
+
+fn take_display_width(text: &str, max_width: usize) -> String {
+    let mut output = String::new();
+    let mut width = 0usize;
+    for ch in text.chars() {
+        let char_width = display_char_width(ch);
+        if width + char_width > max_width {
+            break;
+        }
+        width += char_width;
+        output.push(ch);
+    }
+    output
+}
+
+fn display_width(text: &str) -> usize {
+    text.chars().map(display_char_width).sum()
+}
+
+fn display_char_width(ch: char) -> usize {
+    if ch.is_control() {
+        return 0;
+    }
+    let code = ch as u32;
+    if (0x1100..=0x115f).contains(&code)
+        || (0x2e80..=0xa4cf).contains(&code)
+        || (0xac00..=0xd7a3).contains(&code)
+        || (0xf900..=0xfaff).contains(&code)
+        || (0xfe10..=0xfe19).contains(&code)
+        || (0xfe30..=0xfe6f).contains(&code)
+        || (0xff00..=0xff60).contains(&code)
+        || (0xffe0..=0xffe6).contains(&code)
+    {
+        2
+    } else {
+        1
+    }
 }
 
 fn print_skip_hint(label: &str) {
@@ -460,8 +569,8 @@ pub(crate) fn command_status_text(command: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        progress_notice_output, run_shell_capture, status_bar_lines, strip_sudo_from_apt_commands,
-        ShellStep, STATUS_BAR_LINES,
+        display_width, fit_status_line, progress_notice_output, run_shell_capture,
+        status_bar_lines, strip_sudo_from_apt_commands, ShellStep, STATUS_BAR_LINES,
     };
 
     #[test]
@@ -519,6 +628,14 @@ mod tests {
             lines.iter().filter(|line| line.starts_with("  ")).count(),
             5
         );
+    }
+
+    #[test]
+    fn status_bar_lines_are_trimmed_to_terminal_width() {
+        let fitted = fit_status_line("当前组件：一个很长的工具名称-tool-with-extra-details", 20);
+
+        assert!(display_width(&fitted) <= 19);
+        assert!(fitted.ends_with("..."));
     }
 
     #[cfg(windows)]

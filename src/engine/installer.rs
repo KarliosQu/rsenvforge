@@ -39,6 +39,10 @@ use super::util::{
     shell_quote_str, source_name,
 };
 
+const SELECTION_MENU_FIXED_LINES: u16 = 6;
+const MIN_SELECTION_MENU_HEIGHT: u16 = SELECTION_MENU_FIXED_LINES + 1;
+const MIN_SELECTION_MENU_WIDTH: u16 = 20;
+
 pub fn install_profile(options: &InstallOptions) -> Result<InstallReport, ForgeError> {
     let loaded = load_config(options.config_path.as_deref())?;
     let config = resolve_config_sources(loaded.config, loaded.path.as_deref());
@@ -659,7 +663,7 @@ fn run_interactive_selection_menu(
     terminal::enable_raw_mode()
         .map_err(|error| ForgeError::Command(format!("无法启用交互选择模式：{error}")))?;
     if let Err(error) = execute!(stdout, EnterAlternateScreen, cursor::Hide) {
-        let _ = terminal::disable_raw_mode();
+        restore_selection_terminal(&mut stdout);
         return Err(ForgeError::Command(format!(
             "无法绘制安装选择菜单：{error}"
         )));
@@ -667,8 +671,7 @@ fn run_interactive_selection_menu(
 
     let result = run_selection_event_loop(choices, &mut stdout);
 
-    let _ = execute!(stdout, cursor::Show, LeaveAlternateScreen);
-    let _ = terminal::disable_raw_mode();
+    restore_selection_terminal(&mut stdout);
     println!();
 
     let selection = result?;
@@ -678,6 +681,12 @@ fn run_interactive_selection_menu(
         println!("已选择安装组件：{}", selection.step_count());
     }
     Ok(selection)
+}
+
+fn restore_selection_terminal(stdout: &mut io::Stdout) {
+    let _ = execute!(stdout, cursor::Show);
+    let _ = execute!(stdout, LeaveAlternateScreen);
+    let _ = terminal::disable_raw_mode();
 }
 
 fn run_selection_event_loop(
@@ -742,8 +751,14 @@ fn render_selection_menu(
     stdout: &mut io::Stdout,
 ) -> Result<(), ForgeError> {
     let (terminal_width, terminal_height) = terminal::size().unwrap_or((80, 24));
-    let width = usize::from(terminal_width.saturating_sub(1)).max(20);
-    let visible_count = usize::from(terminal_height).saturating_sub(5).max(1);
+    if terminal_width < MIN_SELECTION_MENU_WIDTH || terminal_height < MIN_SELECTION_MENU_HEIGHT {
+        return Err(ForgeError::Command(format!(
+            "终端窗口过小，组件选择至少需要 {} 列和 {} 行。",
+            MIN_SELECTION_MENU_WIDTH, MIN_SELECTION_MENU_HEIGHT
+        )));
+    }
+    let width = usize::from(terminal_width - 1);
+    let visible_count = selection_visible_count(terminal_height);
     let (start, end) = selection_window(cursor_index, choices.len(), visible_count);
     execute!(
         stdout,
@@ -754,20 +769,23 @@ fn render_selection_menu(
 
     write_menu_line(
         stdout,
+        0,
         "请选择本次要安装的组件（空格选择，Enter 确认）",
         width,
     )?;
     write_menu_line(
         stdout,
+        1,
         "操作：↑/↓ 移动，Space 选择/取消选择，A 全选/全不选，Esc/Q 取消",
         width,
     )?;
     write_menu_line(
         stdout,
+        2,
         &format!("组件：{}-{} / {}", start + 1, end, choices.len()),
         width,
     )?;
-    write_menu_line(stdout, "", width)?;
+    write_menu_line(stdout, 3, "", width)?;
 
     for (index, choice) in choices.iter().enumerate().take(end).skip(start) {
         let cursor = if index == cursor_index { ">" } else { " " };
@@ -780,15 +798,18 @@ fn render_selection_menu(
         };
         write_menu_line(
             stdout,
+            4 + u16::try_from(index - start).unwrap_or(u16::MAX),
             &format!("{cursor} [{mark}] {}", choice.label),
             width,
         )?;
     }
-    write_menu_line(stdout, "", width)?;
+    let footer_row = 4 + u16::try_from(visible_count).unwrap_or(u16::MAX);
+    write_menu_line(stdout, footer_row, "", width)?;
     let above = start;
     let below = choices.len().saturating_sub(end);
     write_menu_line(
         stdout,
+        footer_row + 1,
         &format!("上方 {above} 项，下方 {below} 项。列表较长时会自动分页。"),
         width,
     )?;
@@ -797,10 +818,23 @@ fn render_selection_menu(
         .map_err(|error| ForgeError::Command(format!("刷新安装选择菜单失败：{error}")))
 }
 
-fn write_menu_line(stdout: &mut io::Stdout, text: &str, width: usize) -> Result<(), ForgeError> {
-    queue!(stdout, cursor::MoveToColumn(0))
-        .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
-    write!(stdout, "{}\r\n", fit_display_width(text, width))
+fn selection_visible_count(terminal_height: u16) -> usize {
+    usize::from(terminal_height - SELECTION_MENU_FIXED_LINES)
+}
+
+fn write_menu_line(
+    stdout: &mut io::Stdout,
+    row: u16,
+    text: &str,
+    width: usize,
+) -> Result<(), ForgeError> {
+    queue!(
+        stdout,
+        cursor::MoveTo(0, row),
+        terminal::Clear(ClearType::CurrentLine)
+    )
+    .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))?;
+    write!(stdout, "{}", fit_display_width(text, width))
         .map_err(|error| ForgeError::Command(format!("输出安装选择菜单失败：{error}")))
 }
 
@@ -1692,7 +1726,8 @@ mod tests {
     use super::{
         command_for_install_session_on_platform, command_uses_node_environment, command_uses_nvm,
         command_uses_rust_environment, display_width, fit_display_width, is_actionable_key_event,
-        selectable_install_choices, selection_from_choices, selection_window, InstallSession,
+        selectable_install_choices, selection_from_choices, selection_visible_count,
+        selection_window, InstallSession, SELECTION_MENU_FIXED_LINES,
     };
     use crate::engine::models::{InstallPreview, ToolStatus};
     use crossterm::event::KeyEventKind;
@@ -1785,6 +1820,18 @@ mod tests {
         assert_eq!(selection_window(3, 20, 5), (1, 6));
         assert_eq!(selection_window(19, 20, 5), (15, 20));
         assert_eq!(selection_window(2, 3, 10), (0, 3));
+    }
+
+    #[test]
+    fn selection_menu_uses_only_the_available_terminal_rows() {
+        let terminal_height = 24;
+
+        assert_eq!(selection_visible_count(terminal_height), 18);
+        assert_eq!(
+            u16::try_from(selection_visible_count(terminal_height)).unwrap()
+                + SELECTION_MENU_FIXED_LINES,
+            terminal_height
+        );
     }
 
     #[test]
